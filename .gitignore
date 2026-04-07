@@ -1,0 +1,35 @@
+# 数据集与缓存（体积大，勿提交）
+/Data/
+/hf/
+/outputs/
+/.*/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ROS 2 / colcon
+**/build/
+**/install/
+**/log/
+
+# 工具与系统
+.DS_Store
+*.swp
+*~
+
+# 密钥与环境（勿提交 token）
+.env
+.env.*
+!.env.example
+
+# 若曾把 lerobot 独立仓库的 .git 备份在此
+lerobot/.git.backup_nested
