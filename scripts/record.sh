@@ -32,7 +32,7 @@ export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
 # 数据集仓库ID
 # 本地录制：可以写相对路径（如 Data/try）
 # 云端上传：格式为 用户名/数据集名
-DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcubett0}"
+DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcube}"
 
 # 数据集本地存储的**父目录**
 DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
@@ -52,31 +52,15 @@ DATASET_PRIVATE="${DATASET_PRIVATE:-false}"
 # -----------------------------------------------------------------------------
 # LeRobot 数据集录制主命令（FR3机械臂+L6手爪+双相机）
 # -----------------------------------------------------------------------------
-# lerobot-record \
-#     --robot.type=fr3_linker_l6_follower \
-#     --robot.cameras="{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}" \
-#     --teleop.type=mocap_leader \
-#     --dataset.repo_id="$DATASET_REPO_ID" \
-#     --dataset.root="$DATASET_LOCAL_ROOT" \
-#     --dataset.fps=30 \
-#     --dataset.num_episodes=10 \
-#     --dataset.reset_time_s=20 \
-#     --dataset.private="$DATASET_PRIVATE" \
-#     --dataset.single_task="pick the red cube and drop it in box" \
-#     --display_data=true
-
-
-#!/bin/bash
-
 lerobot-record \
     --robot.type=fr3_linker_l6_follower \
     --robot.cameras="{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}" \
     --teleop.type=mocap_leader \
-    --dataset.repo_id=test123456 \
-    --dataset.root=/home/franka/lqz/Data/test123456 \
+    --dataset.repo_id="$DATASET_REPO_ID" \
+    --dataset.root="$DATASET_LOCAL_ROOT" \
     --dataset.fps=30 \
     --dataset.num_episodes=10 \
     --dataset.reset_time_s=20 \
-    --dataset.push_to_hub=false \
-    --dataset.single_task="test" \
+    --dataset.private="$DATASET_PRIVATE" \
+    --dataset.single_task="pick the red cube and drop it in box" \
     --display_data=true
