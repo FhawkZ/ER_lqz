@@ -35,7 +35,7 @@ class FR3LinkerL6FollowerConfig(RobotConfig):
     enable_arm_publish: bool = True
     # Match lerobot `dataset.fps` / teleop loop. Each trajectory point uses
     # time_from_start = 1/control_hz so the segment length matches one command cycle.
-    control_hz: float = 30.0
+    control_hz: float = 25.0
     # EMA smoothing factor for arm commands: lower is smoother, higher is more responsive.
     ema_alpha: float = 0.15
     arm_joint_names: list[str] = field(

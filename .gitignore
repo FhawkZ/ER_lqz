@@ -3,6 +3,7 @@
 /hf/
 /outputs/
 /.*/
+/models/
 
 # Python
 __pycache__/
