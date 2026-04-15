@@ -34,10 +34,21 @@ from ..teleoperator import Teleoperator
 from .config_mocap_leader import MocapLeaderConfig
 
 logger = logging.getLogger(__name__)
-try:
-    import pinocchio as pin
-except ImportError:
-    pin = None  # type: ignore[assignment]
+
+
+# import sys
+# # 把你的 pinocchio 路径放在最前面，优先加载
+# pin_path = "/home/franka/miniconda3/envs/rlinf/lib/python3.10/site-packages/cmeel.prefix/lib/python3.10/site-packages"
+# sys.path.insert(0, pin_path)
+
+# 然后再 import pinocchio
+import pinocchio as pin
+
+
+# try:
+#     import pinocchio as pin
+# except ImportError:
+#     pin = None  # type: ignore[assignment]
 
 try:
     from lerobot.third_party.mocap_ros_py.mocap_robotapi import (

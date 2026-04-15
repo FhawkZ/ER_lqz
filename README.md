@@ -81,6 +81,13 @@ export PYTHONPATH="$CONDA_PREFIX/lib/python3.10/site-packages:$PYTHONPATH"
 
 运行动捕遥操作：
 
+如果遇到 `pinocchio` 仍然加载到 ROS 版本（NumPy 2 不兼容），可改用更强制的路径优先级：
+
+```bash
+export CONDA_SITE_PACKAGES="/home/franka/miniconda3/envs/lerobot_fr3_qz/lib/python3.10/site-packages"
+export PYTHONPATH="$CONDA_SITE_PACKAGES:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages"
+```
+
 ```bash
 lerobot-teleoperate \
   --teleop.type=mocap_leader \

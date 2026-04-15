@@ -33,18 +33,20 @@ export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
 # 本地录制：可以写相对路径（如 Data/try）
 # 云端上传：格式为 用户名/数据集名
 DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcube}"
+# 可选示例：
+# DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcubett2}"
 
 # 数据集本地存储的**父目录**
-DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
+# DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
 
 # 数据集实际存储路径 = 父目录 + 仓库ID
-DATASET_LOCAL_ROOT="${DATASET_LOCAL_ROOT:-${DATASET_ROOT%/}/${DATASET_REPO_ID}}"
+# DATASET_LOCAL_ROOT="${DATASET_LOCAL_ROOT:-${DATASET_ROOT%/}/${DATASET_REPO_ID}}"
 
 # 是否自动上传到Hugging Face Hub（true=上传，false=只本地保存）
-PUSH_TO_HUB="${PUSH_TO_HUB:-false}"
+# PUSH_TO_HUB="${PUSH_TO_HUB:-false}"
 
 # 云端数据集是否设为私有（true=私有，false=公开）
-DATASET_PRIVATE="${DATASET_PRIVATE:-false}"
+# DATASET_PRIVATE="${DATASET_PRIVATE:-false}"
 
 # 如需给数据集添加标签，取消注释并修改下方内容
 # --dataset.tags=\[fr3,LeRobot,linker_l6\] \

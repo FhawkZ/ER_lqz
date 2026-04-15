@@ -26,6 +26,7 @@ venv/
 .DS_Store
 *.swp
 *~
+*.tar.bz2
 
 # 密钥与环境（勿提交 token）
 .env
