@@ -90,6 +90,19 @@
       move_to_start_example_controller:
         type: franka_example_controllers/MoveToStartExampleController
 
+      cartesian_impedance_controller:
+        type: serl_franka_controllers/CartesianImpedanceControllerReal
+
+      franka_robot_state_broadcaster:
+        type: franka_robot_state_broadcaster/FrankaRobotStateBroadcaster
+
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+
+      joint_position_controller_real:
+        type: serl_franka_controllers/JointPositionControllerReal
+    
+
 /**:
   cartesian_elbow_example_controller:
     ros__parameters:
@@ -262,3 +275,31 @@
         - 10.0
         - 10.0
         - 5.0
+
+
+/**:
+  cartesian_impedance_controller:
+    ros__parameters:
+      arm_id: fr3  
+      translational_stiffness: 2000.0
+      rotational_stiffness: 150.0
+      translational_damping: 75.0
+      rotational_damping: 7.0
+      translational_Ki: 0.0
+      rotational_Ki: 0.0
+      nullspace_stiffness: 0.2
+      joint1_nullspace_stiffness: 15.0
+      translational_clip_neg_x: 0.10  
+      translational_clip_neg_y: 0.10 
+      translational_clip_neg_z: 0.10 
+      translational_clip_x: 0.10      
+      translational_clip_y: 0.10     
+      translational_clip_z: 0.10    
+      rotational_clip_neg_x: 0.10  
+      rotational_clip_neg_y: 0.10 
+      rotational_clip_neg_z: 0.10  
+      rotational_clip_x: 0.10     
+      rotational_clip_y: 0.10      
+      rotational_clip_z: 0.10     
+      filter_params: 0.005
+

@@ -43,6 +43,16 @@ ros2 launch franka_fr3_moveit_config moveit.launch.py \
   use_fake_hardware:=false \
   namespace:=NS_1
 ```
+################# 笛卡尔空间
+```bash
+source install/setup.bash
+ros2 launch serl_franka_controllers cartesian_impedance_controller.launch.py
+
+source install/setup.bash
+ros2 topic pub /NS_1/cartesian_impedance_controller/equilibrium_pose \
+  geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: 'fr3_link0'}, pose: {position: {x: 0.3, y: 0.0, z: 0.4}, orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}}"
+```
 
 若需要 leader 臂示教模式，可额外启动：
 

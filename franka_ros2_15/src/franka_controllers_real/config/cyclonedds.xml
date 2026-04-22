@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- XML 声明：版本1.0，编码格式UTF-8 -->
+
+<!-- CycloneDDS 根配置节点
+     xmlns：指定CycloneDDS配置命名空间
+     xmlns:xsi：XML Schema实例命名空间
+     xsi:schemaLocation：指定配置文件的schema校验文件地址 -->
+<CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+
+    <!-- 域配置：id="any" 表示匹配所有DDS域ID -->
+    <Domain id="any">
+        <!-- 通用配置模块 -->
+        <General>
+            <!-- 指定DDS使用的网络接口名（根据你机器实际网卡设置） -->
+            <NetworkInterfaceAddress>enx6c1ff7688f08</NetworkInterfaceAddress>
+            
+            <!-- 允许使用组播（DDS通信默认依赖组播，设为true开启） -->
+            <AllowMulticast>true</AllowMulticast>
+        </General>
+    </Domain>
+</CycloneDDS>

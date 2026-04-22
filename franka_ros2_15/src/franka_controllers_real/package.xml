@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+
+<!-- ===================== ROS 2 功能包描述文件 ===================== -->
+<!-- 作用：告诉ROS系统这个包叫什么、有什么依赖、导出什么插件、编译规则 -->
+<!-- 格式：package format="3" 是 ROS 2 最新标准格式 -->
+<package format="3">
+
+  <!-- 1. 包名：唯一标识符，编译/启动/依赖时都用这个名字 -->
+  <name>serl_franka_controllers</name>
+
+  <!-- 2. 版本号 -->
+  <version>2.0.0</version>
+
+  <!-- 3. 功能包描述：说明这个包是干嘛的 -->
+  <!-- 本包：用于真实Franka机械臂的SERL控制器 → 带安全限位的笛卡尔阻抗控制器，用于在线强化学习 -->
+  <description>SERL Franka Controllers for Real Robot - Cartesian Impedance Controller with reference limiting for safe online RL</description>
+  
+  <!-- 4. 维护者信息 + 邮箱 -->
+  <maintainer email="serl@berkeley.edu">SERL Team</maintainer>
+
+  <!-- 5. 开源协议：MIT 协议（非常宽松，可自由使用/修改） -->
+  <license>MIT</license>
+
+  <!-- 6. 项目官网地址 -->
+  <url type="website">https://serl-robot.github.io/</url>
+
+  <!-- ===================== 编译工具依赖 ===================== -->
+  <!-- ament_cmake：ROS 2 标准编译工具 -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <!-- rosidl_default_generators：用于生成ROS消息/服务接口 -->
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <!-- ===================== 核心依赖库 ===================== -->
+  <!-- controller_interface：ROS 2 控制器接口（写控制器必须依赖） -->
+  <depend>controller_interface</depend>
+  <!-- hardware_interface：ROS 2 硬件接口（与机械臂通信） -->
+  <depend>hardware_interface</depend>
+  <!-- rclcpp：C++ 版ROS 2核心库 -->
+  <depend>rclcpp</depend>
+  <!-- rclcpp_lifecycle：生命周期节点管理 -->
+  <depend>rclcpp_lifecycle</depend>
+  <!-- realtime_tools：实时控制工具（控制器必须实时运行） -->
+  <depend>realtime_tools</depend>
+  <!-- pluginlib：插件库（ROS 2 控制器都是以插件形式加载） -->
+  <depend>pluginlib</depend>
+
+  <!-- ROS 标准消息 -->
+  <depend>geometry_msgs</depend>  <!-- 几何消息：位置/姿态/力 -->
+  <depend>sensor_msgs</depend>    <!-- 传感器消息 -->
+  <depend>std_msgs</depend>       <!-- 标准消息 -->
+
+  <!-- eigen：C++ 线性代数库（控制器计算用） -->
+  <depend>eigen</depend>
+  <!-- franka_semantic_components：Franka 语义组件（官方机械臂控制组件） -->
+  <depend>franka_semantic_components</depend>
+  <!-- franka_msgs：Franka 自定义消息 -->
+  <depend>franka_msgs</depend>
+
+  <!-- ===================== 运行时依赖 ===================== -->
+  <!-- rosidl_default_runtime：消息接口运行时依赖 -->
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <!-- realsense2_camera：Intel  RealSense 相机驱动（SERL项目视觉用） -->
+  <!-- <exec_depend>realsense2_camera</exec_depend> -->
+
+  <!-- 声明本包属于ROS消息接口包组（自动处理消息依赖） -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <!-- ===================== 测试依赖 ===================== -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <!-- ===================== 导出声明 ===================== -->
+  <export>
+    <!-- 编译类型：ament_cmake -->
+    <build_type>ament_cmake</build_type>
+    
+    <!-- 关键！！！ -->
+    <!-- 注册控制器插件：告诉ROS controller_manager 去哪里加载自定义控制器 -->
+    <!-- 插件描述文件：serl_controllers_plugin.xml -->
+    <controller_interface plugin="${prefix}/serl_controllers_plugin.xml"/>
+  </export>
+
+</package>

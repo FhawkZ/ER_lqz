@@ -1,0 +1,94 @@
+/**:
+  controller_manager:
+    ros__parameters:
+      update_rate: 1000  # Hz - Franka robot control rate
+
+      cartesian_impedance_controller:
+        type: serl_franka_controllers/CartesianImpedanceControllerReal
+
+      franka_robot_state_broadcaster:
+        type: franka_robot_state_broadcaster/FrankaRobotStateBroadcaster
+
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+
+      joint_position_controller_real:
+        type: serl_franka_controllers/JointPositionControllerReal
+    
+/**:
+  cartesian_impedance_controller:
+    ros__parameters:
+      arm_id: fr3  # Franka arm ID (panda or fr3)
+    
+      # 笛卡尔刚度 [N/m 和 Nm/rad]
+      # ROS1版本默认值：translational=2000, rotational=150
+      translational_stiffness: 2000.0
+      rotational_stiffness: 150.0
+    
+      # 笛卡尔阻尼 [Ns/m 和 Nms/rad]
+      # 通常设为 2*sqrt(刚度) 以达到临界阻尼
+      translational_damping: 75.0
+      rotational_damping: 7.0
+    
+      # 积分增益 [N/m·s 和 Nm/rad·s]
+      # 设为0以禁用积分控制（避免累积误差）
+      translational_Ki: 0.0
+      rotational_Ki: 0.0
+    
+      # 零空间刚度 [Nm/rad]
+      # 控制未被末端任务约束的关节自由度
+      nullspace_stiffness: 0.2
+    
+      # 关节1的特殊零空间刚度 [Nm/rad]
+      # 用于更好地控制肘部配置
+      # 注意：代码中会乘以nullspace_stiffness，实际效果 = 15.0*0.2 = 3.0
+      joint1_nullspace_stiffness: 15.0
+    
+      # 误差裁剪限制
+      # 限制控制律中的误差大小，防止接触时产生过大的力
+    
+      # 平移误差裁剪 [m]
+      # 较小的限制 = 更安全的接触，但收敛较慢
+      translational_clip_neg_x: 0.10  # 负向限制 (x轴)
+      translational_clip_neg_y: 0.10  # 负向限制 (y轴)
+      translational_clip_neg_z: 0.10  # 负向限制 (z轴)
+      translational_clip_x: 0.10      # 正向限制 (x轴)
+      translational_clip_y: 0.10      # 正向限制 (y轴)
+      translational_clip_z: 0.10      # 正向限制 (z轴)
+    
+      # 旋转误差裁剪 [rad]
+      rotational_clip_neg_x: 0.10  # 负向限制 (绕x轴)
+      rotational_clip_neg_y: 0.10  # 负向限制 (绕y轴)
+      rotational_clip_neg_z: 0.10  # 负向限制 (绕z轴)
+      rotational_clip_x: 0.10      # 正向限制 (绕x轴)
+      rotational_clip_y: 0.10      # 正向限制 (绕y轴)
+      rotational_clip_z: 0.10      # 正向限制 (绕z轴)
+    
+      # 滤波参数 (0-1)
+      # 用于平滑目标姿态和控制参数的变化
+      # 较低值 = 更平滑但响应慢，较高值 = 响应快但可能抖动
+      filter_params: 0.005
+
+
+# 使用说明：
+# 
+# 1. 纯定位任务（无接触）：
+#    - 可以增大 translational_clip 到 0.05-0.10 m
+#    - 可以增大 rotational_clip 到 0.2-0.5 rad
+#    - 可以增大刚度到 3000-5000 N/m
+# 
+# 2. 接触任务（需要柔顺性）：
+#    - 保持较小的 clip 值 (0.01 m, 0.05 rad)
+#    - 降低刚度到 500-1000 N/m
+#    - 考虑启用积分项 (Ki = 0.5-2.0)
+# 
+# 3. 如果只想移动位置不改变姿态：
+#    - 降低 nullspace_stiffness 到 0.1 或更低
+#    - 或者修改代码让 q_d_nullspace 动态跟随当前关节位置
+# 
+# 4. 力矩限制：
+#    - 代码中 delta_tau_max_ = 1.0 Nm/cycle
+#    - 在1000Hz下，最大力矩变化率 = 1000 Nm/s
+
+
+  

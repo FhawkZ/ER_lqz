@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!-- ===================== ROS 2 控制器插件注册文件 ===================== -->
+<!-- 作用：告诉ROS 2 controller_manager（控制器管理器）
+     1. 这个插件库在哪里
+     2. 里面有哪个控制器类
+     3. 这个控制器是干嘛的 -->
+
+<!-- 1. 声明插件库路径
+     library path：编译生成的 .so 动态库文件名（不带后缀）
+     serl_franka_controllers_lib 对应：libserl_franka_controllers_lib.so -->
+<library path="serl_franka_controllers_lib">
+
+  <!-- 2. 注册一个控制器类（核心！）
+       name：插件的唯一名称（加载控制器时用）
+       type：C++ 里真正的类名（命名空间::类名）
+       base_class_type：必须继承的ROS 2控制器基类（固定） -->
+  <class name="serl_franka_controllers/CartesianImpedanceControllerReal"
+         type="serl_franka_controllers::CartesianImpedanceControllerReal"
+         base_class_type="controller_interface::ControllerInterface">
+
+    <!-- 3. 控制器详细描述（给人看的，不影响运行） -->
+    <description>
+      SERL 团队为真实 Franka 机械臂开发的 笛卡尔阻抗控制器。
+      实现带参考限位的阻抗控制，用于安全的在线强化学习（RL）。
+
+      核心功能特性：
+      - 笛卡尔空间阻抗控制（末端位姿控制）
+      - 位置 + 姿态误差裁剪（SERL 核心安全创新）
+      - 零空间控制（冗余自由度优化，避免关节极限）
+      - 带抗积分饱和的积分控制
+      - 力矩速率限制（保证硬件安全）
+    </description>
+  </class>
+
+</library>
