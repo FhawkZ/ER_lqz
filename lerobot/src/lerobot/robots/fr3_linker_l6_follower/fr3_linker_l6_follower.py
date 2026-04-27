@@ -72,10 +72,8 @@ class FR3LinkerL6Follower(Robot):
         self._lock = threading.Lock()
         self._arm_state_msg: Optional[JointState] = None
         self._hand_state_msg: Optional[JointState] = None
-        ############################### add new ##############################
         self.hand_pose_current = np.zeros(6)  # [x, y, z, roll, pitch, yaw]
         self.hand_joints_current = np.zeros(len(self.config.hand_joint_names))
-        ############################### add new ##############################
         self._arm_pub = None
         self._hand_pub = None
 
@@ -91,10 +89,8 @@ class FR3LinkerL6Follower(Robot):
             features[f"{j}.pos"] = float
         for j in self.config.hand_joint_names:
             features[f"{j}.pos"] = float
-        ############################### add new ##############################
         for j in self.config.hand_pose_names:
             features[f"{j}.pos"] = float
-        ############################### add new ##############################
         for cam_key in self.cameras:
             cfg = self.config.cameras[cam_key]
             features[cam_key] = (cfg.height, cfg.width, 3)
@@ -104,9 +100,7 @@ class FR3LinkerL6Follower(Robot):
     def action_features(self) -> dict[str, type]:
         features = {f"{j}.pos": float for j in self.config.arm_joint_names}
         features.update({f"{j}.pos": float for j in self.config.hand_joint_names})
-        ############################### add new ##############################
         features.update({f"{j}.pos": float for j in self.config.hand_pose_names})
-        ############################### add new ##############################
         return features
 
     @property
@@ -137,11 +131,9 @@ class FR3LinkerL6Follower(Robot):
             JointState, self.config.hand_state_topic, self._hand_state_cb, 10
         )
 
-        ############################### add new ##############################
         self._node.create_subscription(
             PoseStamped, self.config.hand_pose_state_topic, self._get_current_hand_pose, 10
         )
-        ############################### add new ##############################
 
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
@@ -190,11 +182,8 @@ class FR3LinkerL6Follower(Robot):
     def _hand_state_cb(self, msg: JointState) -> None:
         with self._lock:
             self._hand_state_msg = msg
-            ############################### add new ##############################
             self.hand_joints_current = np.array(msg.position, dtype=np.float64)
-            ############################### add new ##############################
 
-    ############################### add new ##############################
     def _get_current_hand_pose(self, msg: PoseStamped) -> None:
         with self._lock:
             p = msg.pose.position
@@ -202,7 +191,6 @@ class FR3LinkerL6Follower(Robot):
             pos = np.array([p.x, p.y, p.z])
             euler = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")
             self.hand_pose_current = np.concatenate([pos, euler])
-    ############################### add new ##############################
 
     def _wait_for_state(self) -> None:
         deadline = time.monotonic() + self.config.timeout_s
@@ -231,22 +219,13 @@ class FR3LinkerL6Follower(Robot):
         # hand_pos = _ordered_values(hand_msg, self.config.hand_joint_names, "position")
         hand_pos = self.hand_joints_current.copy()  # Use the latest hand joint state updated in the callback, which may be more up-to-date than the last received message when get_observation is called.
 
-        ############################### add new ##############################
-        # print(f"🚀🚀🚀🚀 hand_msg: {hand_msg}")
-        print(f"🚀🚀🚀🚀 灵巧手关节角度: {hand_pos}")
-        print(f"🚀🚀🚀🚀 灵巧手关节角度: {self.hand_joints_current}")
-        print(f"🚀🚀🚀🚀 hand_pose_state: {self.hand_pose_current}")
-        ############################### add new ##############################
-
         obs: dict[str, Any] = {}
         for i, j in enumerate(self.config.arm_joint_names):
             obs[f"{j}.pos"] = arm_pos[i]
         for i, j in enumerate(self.config.hand_joint_names):
             obs[f"{j}.pos"] = hand_pos[i]
-        ############################### add new ##############################
         for i, j in enumerate(self.config.hand_pose_names):
             obs[f"{j}.pos"] = self.hand_pose_current[i]
-        ############################### add new ##############################
         for cam_key, cam in self.cameras.items():
             obs[cam_key] = cam.async_read()
         return obs

@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .config_fr3_linker_l6_follower import FR3LinkerL6FollowerConfig
-from .fr3_linker_l6_follower import FR3LinkerL6Follower
+from .config_fr3_eef import FR3EEFConfig
+from .fr3_eef import FR3EEF

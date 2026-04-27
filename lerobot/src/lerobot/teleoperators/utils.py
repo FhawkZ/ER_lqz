@@ -85,6 +85,10 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> Teleoperator:
         from .mocap_leader import MocapLeader
 
         return MocapLeader(config)
+    elif config.type == "mocap_eef_leader":
+        from .mocap_eef_leader import MocapEefLeader
+
+        return MocapEefLeader(config)
     elif config.type == "reachy2_teleoperator":
         from .reachy2_teleoperator import Reachy2Teleoperator
 
