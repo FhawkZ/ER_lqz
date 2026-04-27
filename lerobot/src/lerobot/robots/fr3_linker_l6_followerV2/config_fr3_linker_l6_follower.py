@@ -79,6 +79,5 @@ class FR3LinkerL6FollowerConfig(RobotConfig):
     )
     ############################### add new ##############################
 
-
     timeout_s: float = 5.0
     cameras: dict[str, CameraConfig] = field(default_factory=dict)

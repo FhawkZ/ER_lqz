@@ -52,19 +52,6 @@ class MocapLeaderConfig(TeleoperatorConfig):
         ]
     )
 
-    ############################## add new ##############################
-    hand_pose_names: list[str] = field(
-        default_factory=lambda: [
-            "ee_x",
-            "ee_y",
-            "ee_z",
-            "ori_r",
-            "ori_p",
-            "ori_y",
-        ]
-    )
-    ############################## add new ##############################
-
     # Path to FR3 URDF used for IK (if empty, defaults to local fr3.urdf next to mocap_leader.py)
     fr3_urdf_path: str = ""
     # Name of the FR3 end-effector link in the URDF
@@ -74,10 +61,6 @@ class MocapLeaderConfig(TeleoperatorConfig):
     # Keep aligned with follower default to avoid dependence on
     # franka_robot_state_broadcaster realtime publisher stability.
     fr3_joint_state_topic: str = "/NS_1/joint_states"
-
-    ############################## add new ##############################
-    hand_pose_state_topic: str = "/NS_1/franka_robot_state_broadcaster/current_pose"
-    ############################## add new ##############################
 
     # Optional axis alignment from mocap frame to FR3 frame.
     # When enabled, apply:

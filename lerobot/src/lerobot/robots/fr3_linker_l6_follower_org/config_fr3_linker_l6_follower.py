@@ -30,12 +30,6 @@ class FR3LinkerL6FollowerConfig(RobotConfig):
     joint_command_topic: str = "/NS_1/fr3_arm_controller/joint_trajectory"
     # Keep arm feedback aligned with fr3_follower measured states.
     joint_state_topic: str = "/NS_1/franka_robot_state_broadcaster/measured_joint_states"
-
-    ############################### add new ##############################
-    hand_pose_state_topic = "/NS_1/franka_robot_state_broadcaster/current_pose"
-    # hand_pose_command_topic = "/NS_1/cartesian_impedance_controller/equilibrium_pose"
-    ############################### add new ##############################
-
     hand_control_topic: str = "/cb_right_hand_control_cmd"
     hand_state_topic: str = "/cb_right_hand_state"
     enable_arm_publish: bool = True
@@ -65,20 +59,5 @@ class FR3LinkerL6FollowerConfig(RobotConfig):
             "hand_5",
         ]
     )
-
-    ############################### add new ##############################
-    hand_pose_names: list[str] = field(
-        default_factory=lambda: [
-            "ee_x",
-            "ee_y",
-            "ee_z",
-            "ori_r",
-            "ori_p",
-            "ori_y",
-        ]
-    )
-    ############################### add new ##############################
-
-
     timeout_s: float = 5.0
     cameras: dict[str, CameraConfig] = field(default_factory=dict)

@@ -37,10 +37,18 @@ DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcube}"
 # DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcubett2}"
 
 # 数据集本地存储的**父目录**
-# DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
+DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
 
 # 数据集实际存储路径 = 父目录 + 仓库ID
-# DATASET_LOCAL_ROOT="${DATASET_LOCAL_ROOT:-${DATASET_ROOT%/}/${DATASET_REPO_ID}}"
+DATASET_LOCAL_ROOT="${DATASET_LOCAL_ROOT:-${DATASET_ROOT%/}/${DATASET_REPO_ID}}"
+
+
+if [ -d "${DATASET_ROOT}" ]; then
+    echo "🗑️ 目录已存在，自动删除：${DATASET_ROOT}"
+    rm -rf "${DATASET_ROOT}"
+    sleep 0.5
+fi
+
 
 # 是否自动上传到Hugging Face Hub（true=上传，false=只本地保存）
 # PUSH_TO_HUB="${PUSH_TO_HUB:-false}"
@@ -63,6 +71,7 @@ lerobot-record \
     --dataset.fps=30 \
     --dataset.num_episodes=10 \
     --dataset.reset_time_s=20 \
-    --dataset.private="$DATASET_PRIVATE" \
+    --dataset.private=false \
+    --dataset.push_to_hub=false \
     --dataset.single_task="pick the red cube and drop it in box" \
     --display_data=true

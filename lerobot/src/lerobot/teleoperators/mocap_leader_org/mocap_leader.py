@@ -32,7 +32,6 @@ from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnected
 
 from ..teleoperator import Teleoperator
 from .config_mocap_leader import MocapLeaderConfig
-from geometry_msgs.msg import PoseStamped
 
 logger = logging.getLogger(__name__)
 
@@ -455,18 +454,10 @@ class MocapLeader(Teleoperator):
             "RightHandPinky3",
         ]
 
-        ############################## add new ##############################
-        self.hand_pose_target = np.zeros(6, dtype=np.float64)  # x,y,z + roll,pitch,yaw for the hand pose target (relative to Hips)
-        self.hand_pose_current = np.zeros(6, dtype=np.float64)  # x,y,z + roll,pitch,yaw for the current hand pose (relative to Hips)
-        ############################## add new ##############################
-
     @property
     def action_features(self) -> dict[str, type]:
         features = {f"{j}.pos": float for j in self.config.arm_joint_names}
         features.update({f"{j}.pos": float for j in self.config.hand_joint_names})
-        ############################## add new ##############################
-        features.update({f"{j}.pos": float for j in self.config.hand_pose_names})
-        ############################## add new ##############################
         return features
 
     @property
@@ -499,12 +490,6 @@ class MocapLeader(Teleoperator):
             self._fr3_joint_state_cb,
             10,
         )
-        
-        ############################### add new ###############################
-        self._node.create_subscription(
-            PoseStamped, self.config.hand_pose_state_topic, self._get_current_hand_pose, 10
-        )
-        ############################### add new ###############################
 
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
@@ -525,7 +510,7 @@ class MocapLeader(Teleoperator):
         self._mocap_thread.start()
 
         self._connected = True
-        logger.info("%s 🚀🚀🚀🚀 connected", self)
+        logger.info("%s connected", self)
 
     @property
     def is_calibrated(self) -> bool:
@@ -631,16 +616,6 @@ class MocapLeader(Teleoperator):
     def _fr3_joint_state_cb(self, msg: JointState) -> None:
         with self._lock:
             self._fr3_joint_state_msg = msg
-
-    ############################### add new ##############################
-    def _get_current_hand_pose(self, msg: PoseStamped) -> None:
-        with self._lock:
-            p = msg.pose.position
-            q = msg.pose.orientation
-            pos = np.array([p.x, p.y, p.z])
-            euler = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")
-            self.hand_pose_current = np.concatenate([pos, euler])
-    ############################### add new ##############################
 
     def _ordered_arm_positions_rad(self) -> list[float]:
         """Extract FR3 joint positions (radians) from measured_joint_states."""
@@ -866,13 +841,6 @@ class MocapLeader(Teleoperator):
         if delta_rot_norm > self._max_delta_rot_per_cycle and delta_rot_norm > 1e-12:
             delta_x[3:] *= self._max_delta_rot_per_cycle / delta_rot_norm
 
-        ############################### add new ##############################
-        self.hand_pose_target = self.hand_pose_current.copy() + delta_x  # Update hand pose target for follower based on current pose + delta
-        print(f"🚀🚀🚀🚀 delta_pos: {delta_x[:3]}, delta_rot: {delta_x[3:]}")
-        print(f"🚀🚀🚀🚀 hand_pose_current before update: {self.hand_pose_current}")
-        print(f"🚀🚀🚀🚀 hand_pose_target after update: {self.hand_pose_target}")
-        ############################### add new ##############################
-
         delta_q = self._compute_incremental_ik(q_curr=self._virtual_q, delta_x=delta_x)
         delta_q = np.clip(
             delta_q,
@@ -928,10 +896,6 @@ class MocapLeader(Teleoperator):
                 action[f"{joint}.pos"] = hand_pos[idx]
             else:
                 action[f"{joint}.pos"] = 0.0
-        ############################### add new ##############################
-        for idx, joint in enumerate(self.config.hand_pose_names):
-            action[f"{joint}.pos"] = self.hand_pose_target[idx]
-        ############################### add new ##############################
         return action
 
     def send_feedback(self, feedback: dict[str, float]) -> None:

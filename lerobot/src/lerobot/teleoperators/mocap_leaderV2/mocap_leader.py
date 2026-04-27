@@ -37,19 +37,8 @@ from geometry_msgs.msg import PoseStamped
 logger = logging.getLogger(__name__)
 
 
-# import sys
-# # 把你的 pinocchio 路径放在最前面，优先加载
-# pin_path = "/home/franka/miniconda3/envs/rlinf/lib/python3.10/site-packages/cmeel.prefix/lib/python3.10/site-packages"
-# sys.path.insert(0, pin_path)
-
-# 然后再 import pinocchio
 import pinocchio as pin
 
-
-# try:
-#     import pinocchio as pin
-# except ImportError:
-#     pin = None  # type: ignore[assignment]
 
 try:
     from lerobot.third_party.mocap_ros_py.mocap_robotapi import (
@@ -499,12 +488,11 @@ class MocapLeader(Teleoperator):
             self._fr3_joint_state_cb,
             10,
         )
-        
-        ############################### add new ###############################
+        ############################## add new ##############################
         self._node.create_subscription(
             PoseStamped, self.config.hand_pose_state_topic, self._get_current_hand_pose, 10
         )
-        ############################### add new ###############################
+        ############################## add new ##############################
 
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
@@ -525,7 +513,7 @@ class MocapLeader(Teleoperator):
         self._mocap_thread.start()
 
         self._connected = True
-        logger.info("%s 🚀🚀🚀🚀 connected", self)
+        logger.info("%s connected", self)
 
     @property
     def is_calibrated(self) -> bool:
