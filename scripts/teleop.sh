@@ -1,13 +1,29 @@
 #!/usr/bin/env bash
-# 动捕遥操作：mocap_eef_leader → fr3_eef（无 IK，直接发 EE 位姿）
+# 动捕遥操作（LeRobot 0.5.1）
+#
+# 默认: mocap_retarget_leader + fr3_eef（dex 手部 + 笛卡尔 EE 臂）
+# 可选环境变量:
+#   TELEOP_TYPE=mocap_eef_leader     # 几何弯曲映射手部
+#   TELEOP_TYPE=mocap_leader         # 需配合 ROBOT_TYPE=fr3_linker_l6_follower（IK 臂）
+#   ROBOT_TYPE=fr3_linker_l6_follower
+#   FPS=30
+#
+# dex 模式需: pip install dex-retargeting
 
-export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-export CONDA_SITE_PACKAGES="$(python -c 'import site; print([p for p in site.getsitepackages() if "site-packages" in p][0])')"
-export PYTHONPATH="$CONDA_SITE_PACKAGES:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages"
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=env_lerobot.sh
+source "${SCRIPT_DIR}/env_lerobot.sh"
 
-lerobot-teleoperate \
-    --robot.type=fr3_eef \
-    --robot.cameras="{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}" \
-    --teleop.type=mocap_eef_leader \
-    --fps=30 \
-    --display_data=true
+TELEOP_TYPE="${TELEOP_TYPE:-mocap_retarget_leader}"
+ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
+FPS="${FPS:-30}"
+
+CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
+
+exec lerobot-teleoperate \
+  --teleop.type="${TELEOP_TYPE}" \
+  --robot.type="${ROBOT_TYPE}" \
+  --robot.cameras="${CAMERAS}" \
+  --fps="${FPS}" \
+  --display_data=true

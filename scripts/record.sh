@@ -1,77 +1,54 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Hugging Face Hub / 国内镜像配置
-# 作用：解决国内下载/上传模型、数据集慢的问题
-# -----------------------------------------------------------------------------
-# HF镜像站点：使用国内镜像加速Hugging Face访问
-# 不需要镜像时执行命令：unset HF_ENDPOINT 即可关闭
-export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
+# LeRobot 0.5.1 数据采集：mocap_leader + fr3_linker_l6_follower
+#
+# 键盘（窗口需有焦点）: → 结束当前段/进入 reset；← 重录本集；Esc 停止脚本
+#
+# 环境变量覆盖示例:
+#   DATASET_REPO_ID=franka_hand/redcube14
+#   DATASET_ROOT=/home/franka/lqz/Data
+#   WIPE_DATASET=true          # 仅删除 DATASET_LOCAL_ROOT，再重新录制
+#   RESUME=true                # 往同一数据集追加 episode
+#   PUSH_TO_HUB=true
+#   NUM_EPISODES=10
 
-# 解决conda与ROS2 Humble的Python包路径冲突
-# 自动获取conda环境的site-packages路径，合并ROS2的Python路径，保证依赖正常加载
-export CONDA_SITE_PACKAGES="$(python -c 'import site; print([p for p in site.getsitepackages() if "site-packages" in p][0])')"
-export PYTHONPATH="$CONDA_SITE_PACKAGES:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages"
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=env_lerobot.sh
+source "${SCRIPT_DIR}/env_lerobot.sh"
 
-# Hugging Face 身份验证令牌（上传数据集必须）
-# 提前登录：huggingface-cli login
-# 脚本直接读取环境变量中的HF_TOKEN，无需手动登录
-
-# Hugging Face 本地缓存目录
-# 所有模型、数据集缓存统一存放在此路径，避免占用系统盘
-export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
-
-# -----------------------------------------------------------------------------
-# 数据集录制参数配置（可通过环境变量覆盖，无需修改脚本主体）
-# -----------------------------------------------------------------------------
-# 全局键盘控制说明（录制时使用，窗口需要获得焦点）
-# → ：提前结束当前录制段/进入复位阶段
-# ← ：结束当前片段并重新录制
-# Esc：停止整个录制脚本（不会录满设定的集数）
-# 注意：误触会导致当前片段帧数极短或为0
-
-# 数据集仓库ID
-# 本地录制：可以写相对路径（如 Data/try）
-# 云端上传：格式为 用户名/数据集名
 DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcube}"
-# 可选示例：
-# DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcubett2}"
-
-# 数据集本地存储的**父目录**
 DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data}"
-
-# 数据集实际存储路径 = 父目录 + 仓库ID
 DATASET_LOCAL_ROOT="${DATASET_LOCAL_ROOT:-${DATASET_ROOT%/}/${DATASET_REPO_ID}}"
 
+PUSH_TO_HUB="${PUSH_TO_HUB:-false}"
+DATASET_PRIVATE="${DATASET_PRIVATE:-false}"
+RESUME="${RESUME:-false}"
+NUM_EPISODES="${NUM_EPISODES:-10}"
+WIPE_DATASET="${WIPE_DATASET:-false}"
 
-if [ -d "${DATASET_ROOT}" ]; then
-    echo "🗑️ 目录已存在，自动删除：${DATASET_ROOT}"
-    rm -rf "${DATASET_ROOT}"
+if [[ "${WIPE_DATASET}" == "true" && "${RESUME}" != "true" ]]; then
+  if [[ -d "${DATASET_LOCAL_ROOT}" ]]; then
+    echo "WIPE_DATASET: 删除 ${DATASET_LOCAL_ROOT}"
+    rm -rf "${DATASET_LOCAL_ROOT}"
     sleep 0.5
+  fi
 fi
 
+CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
 
-# 是否自动上传到Hugging Face Hub（true=上传，false=只本地保存）
-# PUSH_TO_HUB="${PUSH_TO_HUB:-false}"
-
-# 云端数据集是否设为私有（true=私有，false=公开）
-# DATASET_PRIVATE="${DATASET_PRIVATE:-false}"
-
-# 如需给数据集添加标签，取消注释并修改下方内容
-# --dataset.tags=\[fr3,LeRobot,linker_l6\] \
-
-# -----------------------------------------------------------------------------
-# LeRobot 数据集录制主命令（FR3机械臂+L6手爪+双相机）
-# -----------------------------------------------------------------------------
-lerobot-record \
-    --robot.type=fr3_linker_l6_follower \
-    --robot.cameras="{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}" \
-    --teleop.type=mocap_leader \
-    --dataset.repo_id="$DATASET_REPO_ID" \
-    --dataset.root="$DATASET_LOCAL_ROOT" \
-    --dataset.fps=30 \
-    --dataset.num_episodes=10 \
-    --dataset.reset_time_s=20 \
-    --dataset.private=false \
-    --dataset.push_to_hub=false \
-    --dataset.single_task="pick the red cube and drop it in box" \
-    --display_data=true
+exec lerobot-record \
+  --robot.type=fr3_linker_l6_follower \
+  --robot.cameras="${CAMERAS}" \
+  --teleop.type=mocap_leader \
+  --dataset.repo_id="${DATASET_REPO_ID}" \
+  --dataset.root="${DATASET_LOCAL_ROOT}" \
+  --dataset.fps=30 \
+  --dataset.num_episodes="${NUM_EPISODES}" \
+  --dataset.reset_time_s=20 \
+  --dataset.streaming_encoding=true \
+  --dataset.encoder_threads=2 \
+  --dataset.push_to_hub="${PUSH_TO_HUB}" \
+  --dataset.private="${DATASET_PRIVATE}" \
+  --dataset.single_task="${SINGLE_TASK:-pick the red cube and drop it in box}" \
+  --display_data=true \
+  --resume="${RESUME}"

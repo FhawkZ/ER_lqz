@@ -44,23 +44,28 @@ import numpy as np
 from lerobot.model.kinematics import RobotKinematics
 from lerobot.robots import (  # noqa: F401
     RobotConfig,
+    bi_openarm_follower,
     bi_so_follower,
-    fr3_follower,
-    fr3_linker_l6_follower,
     koch_follower,
     make_robot_from_config,
+    fr3_linker_l6_follower,
+    fr3_follower,
     omx_follower,
+    openarm_follower,
     so_follower,
 )
 from lerobot.teleoperators import (  # noqa: F401
     TeleoperatorConfig,
+    bi_openarm_leader,
     bi_so_leader,
-    fr3_leader,
     gamepad,
     koch_leader,
     make_teleoperator_from_config,
     mocap_leader,
+    fr3_leader,
     omx_leader,
+    openarm_leader,
+    openarm_mini,
     so_leader,
 )
 from lerobot.utils.robot_utils import precise_sleep

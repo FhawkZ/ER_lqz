@@ -60,6 +60,7 @@ import rerun as rr
 
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig  # noqa: F401
+from lerobot.cameras.zmq.configuration_zmq import ZMQCameraConfig  # noqa: F401
 from lerobot.configs import parser
 from lerobot.processor import (
     RobotAction,
@@ -70,34 +71,41 @@ from lerobot.processor import (
 from lerobot.robots import (  # noqa: F401
     Robot,
     RobotConfig,
+    bi_openarm_follower,
     bi_so_follower,
     earthrover_mini_plus,
-    fr3_eef,
-    fr3_follower,
     fr3_linker_l6_follower,
+    fr3_follower,
+    fr3_eef,
     hope_jr,
     koch_follower,
     make_robot_from_config,
     omx_follower,
+    openarm_follower,
     reachy2,
     so_follower,
+    unitree_g1 as unitree_g1_robot,
 )
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
+    bi_openarm_leader,
     bi_so_leader,
-    fr3_leader,
     gamepad,
     homunculus,
     keyboard,
     koch_leader,
-    make_teleoperator_from_config,
-    mocap_eef_leader,
-    mocap_leader,
     mocap_retarget,
+    mocap_leader,
+    mocap_eef_leader,
+    fr3_leader,
+    make_teleoperator_from_config,
     omx_leader,
+    openarm_leader,
+    openarm_mini,
     reachy2_teleoperator,
     so_leader,
+    unitree_g1,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.robot_utils import precise_sleep
@@ -110,7 +118,7 @@ class TeleoperateConfig:
     # TODO: pepijn, steven: if more robots require multiple teleoperators (like lekiwi) its good to make this possibele in teleop.py and record.py with List[Teleoperator]
     teleop: TeleoperatorConfig
     robot: RobotConfig | None = None
-    # Allow running only the teleoperator without connecting a robot.
+    # Allow teleop-only runs without a follower.
     enable_robot: bool = True
     # Limit the maximum frames per second.
     fps: int = 60
@@ -171,6 +179,9 @@ def teleop_loop(
         else:
             obs = robot.get_observation()
 
+        if robot is not None and robot.name == "unitree_g1":
+            teleop.send_feedback(obs)
+
         # Get teleop action
         raw_action = teleop.get_action()
 
@@ -228,14 +239,19 @@ def teleoperate(cfg: TeleoperateConfig):
     )
 
     teleop = make_teleoperator_from_config(cfg.teleop)
-    robot = make_robot_from_config(cfg.robot) if cfg.enable_robot else None
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 
+    robot = None
     teleop.connect()
-    if robot is not None:
+    if cfg.enable_robot:
+        if cfg.robot is None:
+            raise ValueError("enable_robot=True requires robot config.")
+        robot = make_robot_from_config(cfg.robot)
         robot.connect()
         if hasattr(robot, "reset_motion_state"):
             robot.reset_motion_state()
+    else:
+        robot = None
     if hasattr(teleop, "reset_incremental_pose"):
         teleop.reset_incremental_pose()
 

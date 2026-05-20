@@ -31,6 +31,7 @@ SUPPORTED_ROBOTS = [
     "so101_follower",
     "bi_so_follower",
     "omx_follower",
+    "fr3_follower",
     "fr3_linker_l6_follower",
     "fr3_eef",
 ]

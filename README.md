@@ -19,8 +19,12 @@
   - 主要负责将动捕输入转换为 ROS/机器人可用控制信号。
 
 - `scripts/`
-  - 项目辅助脚本（当前主要是采集脚本）。
-  - `scripts/record.sh` 用于启动标准化数据采集流程。
+  - 项目辅助脚本（LeRobot **0.5.1**）。
+  - `env_lerobot.sh`：ROS2 + lerobot 公共环境（被其他脚本 `source`）。
+  - `teleop.sh`：默认 `mocap_retarget_leader` + `fr3_eef`。
+  - `teleop_ik.sh`：`mocap_leader` + `fr3_linker_l6_follower`（IK 臂采集/遥操作）。
+  - `record.sh`：数据采集（含 `streaming_encoding`）。
+  - `server.sh` / `client.sh`：异步推理。
 
 ## 2、使用说明
 
@@ -89,30 +93,32 @@ conda activate lerobot_fr3_qz
 export PYTHONPATH="$CONDA_PREFIX/lib/python3.10/site-packages:$PYTHONPATH"
 ```
 
-运行动捕遥操作：
-
-如果遇到 `pinocchio` 仍然加载到 ROS 版本（NumPy 2 不兼容），可改用更强制的路径优先级：
+安装/更新 lerobot 后，脚本会自动 `source` 公共环境（见 `scripts/env_lerobot.sh`）：
 
 ```bash
-export CONDA_SITE_PACKAGES="/home/franka/miniconda3/envs/lerobot_fr3_qz/lib/python3.10/site-packages"
-export PYTHONPATH="$CONDA_SITE_PACKAGES:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages"
+cd /home/franka/lqz/lerobot && pip install -e .
+pip install dex-retargeting   # 仅 dex 遥操作需要
 ```
+
+**默认遥操作**（dex 手部 + 笛卡尔 EE）：
 
 ```bash
-lerobot-teleoperate \
-  --teleop.type=mocap_leader \
-  --robot.type=fr3_linker_l6_follower \
-  --fps=60
+bash scripts/teleop.sh
 ```
 
-Linker L6 手部使用 dex-retargeting（臂部仍为 EE 增量，配对 `fr3_eef` 笛卡尔阻抗控制）时，在 conda 环境中安装 `pip install dex-retargeting`（URDF 已随 `mocap_retarget/assets` 提供），再执行：
+**IK 臂遥操作 / 与采集一致**（`mocap_leader` + `fr3_linker_l6_follower`，需 pinocchio）：
 
 ```bash
-lerobot-teleoperate \
-  --teleop.type=mocap_retarget_leader \
-  --robot.type=fr3_eef \
-  --fps=60
+bash scripts/teleop_ik.sh
 ```
+
+等价于手动指定类型：
+
+```bash
+TELEOP_TYPE=mocap_eef_leader ROBOT_TYPE=fr3_eef bash scripts/teleop.sh
+```
+
+> 内嵌 `lerobot` 为 **v0.5.1**；升级维护见 `scripts/upgrade_lerobot.sh`。若 pinocchio 仍加载到 ROS 版本，检查 `env_lerobot.sh` 中 `PYTHONPATH` 顺序。
 
 （可选）仅 FR3 leader-follower 遥操作：
 
@@ -132,9 +138,12 @@ bash scripts/record.sh
 
 在采集数据的时候，使用的是 rerun[^rerun]。基本使用是：如果该条任务走完，可以直接按“➡️”进入 reset 阶段（双人采集可在这时复原场景）；单人操作建议再按一次“➡️”将该条数据存储下来，利用存储时间简单布置场景。若单条数据录制不满意，可以按“⬅️”回到上一个阶段，需要注意当前是 reset 阶段还是录制阶段，终端会有提示。
 
-其中一般需要修改的有
+其中一般需要修改的有（也可通过环境变量传入，见 `scripts/record.sh` 头部注释）：
+
 ```bash
-DATASET_REPO_ID="${DATASET_REPO_ID:-franka_hand/redcube}" #仓库id
---dataset.num_episodes=10 #需要录制多少条（我一般是10条一次，后面merge起来，录完一次后可以校准一下动捕）
---dataset.single_task="pick the red cube and drop it in box"  #任务描述，在VLA任务中就是文本输入
+DATASET_REPO_ID=franka_hand/redcube NUM_EPISODES=10 \
+  SINGLE_TASK="pick the red cube and drop it in box" \
+  bash scripts/record.sh
 ```
+
+清空重来时加 `WIPE_DATASET=true`（只删 `DATASET_LOCAL_ROOT`，不会误删整个 `Data/` 父目录）。
