@@ -1,0 +1,50 @@
+# ER_lqz — Conda + pip 环境配置
+# lerobot 0.5.1 要求 Python >= 3.12（勿使用旧的 3.10 环境 lerobot_fr3_qz）
+
+# ------------------------------------------------------------------------------
+# 1. Conda：创建并激活
+# ------------------------------------------------------------------------------
+
+conda create -n lerobot_fr3 python=3.12 -y
+conda activate lerobot_fr3
+
+# ------------------------------------------------------------------------------
+# 2. Conda：依赖（conda-forge）
+# ------------------------------------------------------------------------------
+
+# pinocchio：仅 scripts/teleop_ik.sh（mocap_leader + IK 臂）需要
+# 默认 teleop/record（mocap_retarget_leader + fr3_eef）可不装
+conda install -c conda-forge pinocchio -y
+
+# ffmpeg：数据采集流式编码（record.sh streaming_encoding）
+conda install -c conda-forge "ffmpeg=7.1.1" -y
+
+# ------------------------------------------------------------------------------
+# 3. pip：在 <ER_LQZ_ROOT>/lerobot 目录下执行（先 conda activate）
+# ------------------------------------------------------------------------------
+
+cd <ER_LQZ_ROOT>/lerobot
+
+# lerobot 可编辑安装（含 RealSense、scipy、async、仿真与策略等 extras）
+pip install -e ".[all]"
+
+# dex 手部重定向（默认 teleop/record 必需；不在 lerobot extras 里）
+pip install dex-retargeting
+
+# 验证
+python -c "import lerobot; import dex_retargeting; print('ok')"
+
+# ------------------------------------------------------------------------------
+# 4. 与 ROS 混用（先 conda activate，再 source scripts/env_lerobot.sh）
+# 若 pinocchio 加载到 ROS 旧版：
+# ------------------------------------------------------------------------------
+
+export PYTHONPATH="$CONDA_PREFIX/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+
+# ------------------------------------------------------------------------------
+# 常用
+# ------------------------------------------------------------------------------
+
+# conda activate lerobot_fr3
+# conda deactivate
+# conda env remove -n lerobot_fr3
