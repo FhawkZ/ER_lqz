@@ -105,6 +105,15 @@ lerobot-teleoperate \
   --fps=60
 ```
 
+Linker L6 手部使用 dex-retargeting（臂部仍为 EE 增量，配对 `fr3_eef` 笛卡尔阻抗控制）时，在 conda 环境中安装 `pip install dex-retargeting`（URDF 已随 `mocap_retarget/assets` 提供），再执行：
+
+```bash
+lerobot-teleoperate \
+  --teleop.type=mocap_retarget_leader \
+  --robot.type=fr3_eef \
+  --fps=60
+```
+
 （可选）仅 FR3 leader-follower 遥操作：
 
 ```bash

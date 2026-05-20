@@ -1,0 +1,43 @@
+retargeting:
+  type: vector
+  # 相对路径：相对于 urdf_root（默认 mocap_retarget/assets）
+  # 最终文件 = assets/l6/right/linkerhand_l6v3.1_right.urdf
+  urdf_path: l6/right/linkerhand_l6v3.1_right.urdf
+
+  # 该配置面向当前工程更接近的 Linker L6 六自由度右手。
+  # target_joint_names 显式写出顺序，便于和现有 6 通道下游接口对齐。
+  target_joint_names:
+    - rh_thumb_cmc_roll
+    - rh_index_mcp_pitch
+    - rh_middle_mcp_pitch
+    - rh_ring_mcp_pitch
+    - rh_pinky_mcp_pitch
+    - rh_thumb_cmc_pitch
+
+  # 这里采用最简单、最稳妥的“腕/掌根 -> 指尖”向量约束。
+  target_origin_link_names:
+    - rh_hand_base_link
+    - rh_hand_base_link
+    - rh_hand_base_link
+    - rh_hand_base_link
+    - rh_hand_base_link
+
+  target_task_link_names:
+    - rh_thumb_tip
+    - rh_index_tip
+    - rh_middle_tip
+    - rh_ring_tip
+    - rh_pinky_tip
+
+  # 对应 MediaPipe 21 点下标：thumb/index/middle/ring/pinky 的指尖。
+  target_link_human_indices:
+    # - [1, 5, 9, 13, 17]
+    - [0, 0, 0, 0, 0]
+    - [4, 8, 12, 16, 20]
+
+  # 首次接入建议先用 1.0 验证坐标系，再根据实际张合幅度调大或调小。
+  scaling_factor: 1.2
+
+  # alpha 越小越平滑，但延迟越明显。
+  low_pass_alpha: 0.2
+  #has_joint_limits: true

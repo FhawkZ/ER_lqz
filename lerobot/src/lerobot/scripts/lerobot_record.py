@@ -121,6 +121,7 @@ from lerobot.teleoperators import (  # noqa: F401
     make_teleoperator_from_config,
     mocap_eef_leader,
     mocap_leader,
+    mocap_retarget,
     omx_leader,
     reachy2_teleoperator,
     so_leader,
