@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-# LeRobot 0.5.1 数据采集：mocap_leader + fr3_linker_l6_follower
+# 数据采集：mocap_retarget_leader → fr3_eef（LeRobot 0.5.1）
+# 与 teleop 相同配对；数据集 action 为 6D EE + 6D hand（非 7 关节臂）
 #
-# 键盘（窗口需有焦点）: → 结束当前段/进入 reset；← 重录本集；Esc 停止脚本
-#
-# 环境变量覆盖示例:
-#   DATASET_REPO_ID=franka_hand/redcube14
-#   DATASET_ROOT=/home/franka/lqz/Data
-#   WIPE_DATASET=true          # 仅删除 DATASET_LOCAL_ROOT，再重新录制
-#   RESUME=true                # 往同一数据集追加 episode
-#   PUSH_TO_HUB=true
-#   NUM_EPISODES=10
+# 键盘: → 结束当前段/reset；← 重录本集；Esc 停止
+# 环境变量: DATASET_REPO_ID, DATASET_ROOT, WIPE_DATASET, RESUME, NUM_EPISODES, SINGLE_TASK
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,9 +31,9 @@ fi
 CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
 
 exec lerobot-record \
-  --robot.type=fr3_linker_l6_follower \
+  --robot.type="${LEROBOT_ROBOT_TYPE}" \
   --robot.cameras="${CAMERAS}" \
-  --teleop.type=mocap_leader \
+  --teleop.type="${LEROBOT_TELEOP_TYPE}" \
   --dataset.repo_id="${DATASET_REPO_ID}" \
   --dataset.root="${DATASET_LOCAL_ROOT}" \
   --dataset.fps=30 \

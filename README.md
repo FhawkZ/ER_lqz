@@ -128,13 +128,13 @@ lerobot-teleoperate --teleop.type=fr3_leader --robot.type=fr3_follower
 
 ### 2.3 数据采集
 
-完成基础启动与遥操作链路后，执行：
+与遥操作相同，默认 **`mocap_retarget_leader` + `fr3_eef`**（数据集为 6D EE + 6 路手部，不是 7 关节臂）。若需 IK 臂数据集，请改用 `teleop_ik.sh` 并自行调整 `record.sh` 中的类型。
 
 ```bash
 bash scripts/record.sh
 ```
 
-`record.sh` 中已包含默认的相机、数据集路径、回合数等参数，可按注释修改 `DATASET_REPO_ID`、`DATASET_LOCAL_ROOT`、`num_episodes` 等字段。
+可按环境变量覆盖 `DATASET_REPO_ID`、`NUM_EPISODES`、`SINGLE_TASK` 等（见脚本头部注释）。
 
 在采集数据的时候，使用的是 rerun[^rerun]。基本使用是：如果该条任务走完，可以直接按“➡️”进入 reset 阶段（双人采集可在这时复原场景）；单人操作建议再按一次“➡️”将该条数据存储下来，利用存储时间简单布置场景。若单条数据录制不满意，可以按“⬅️”回到上一个阶段，需要注意当前是 reset 阶段还是录制阶段，终端会有提示。
 
