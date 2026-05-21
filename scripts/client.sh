@@ -7,10 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=env_lerobot.sh
 source "${SCRIPT_DIR}/env_lerobot.sh"
 
-SERVER_ADDRESS="${SERVER_ADDRESS:-172.18.5.61:8080}"
-POLICY_PATH="${POLICY_PATH:-/home/franka/lqz/models/redcube_act/080000/pretrained_model}"
+SERVER_ADDRESS="${SERVER_ADDRESS:-172.18.14.81:8080}"
+POLICY_PATH="${POLICY_PATH:-/home/lqz/code/ER_lqz/models/redcube_act/080000/pretrained_model}"
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
-ROBOT_TYPE="${ROBOT_TYPE:-fr3_linker_l6_follower}"
+ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 
 CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
 
