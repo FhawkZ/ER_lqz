@@ -176,3 +176,13 @@ outputs/
 *.urdf
 *.xml
 *.part
+
+# mocap_retarget: ship robot meshes, URDF, and vendor native libs (override rules above)
+!src/lerobot/teleoperators/mocap_retarget/assets/
+!src/lerobot/teleoperators/mocap_retarget/assets/**
+!src/lerobot/teleoperators/mocap_retarget/**/*.stl
+!src/lerobot/teleoperators/mocap_retarget/**/*.STL
+!src/lerobot/teleoperators/mocap_retarget/**/*.urdf
+!src/lerobot/teleoperators/mocap_retarget/mocap/mocap_ros_py/lib/
+!src/lerobot/teleoperators/mocap_retarget/mocap/mocap_ros_py/lib/**
+!src/lerobot/teleoperators/mocap_retarget/mocap/mocap_ros_py/lib/*.so
