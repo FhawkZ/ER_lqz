@@ -88,7 +88,7 @@ ros2 launch linker_hand_ros2_sdk linker_hand.launch.py
 在遥操作终端中，先激活 conda 环境并保证 pinocchio 优先使用 conda 包[^pythonpath]：
 
 ```bash
-conda activate lerobot_fr3_qz
+conda activate lerobot
 # export PYTHONPATH="$(python -c 'import site; print(next(p for p in site.getsitepackages() if "site-packages" in p))')${PYTHONPATH:+:$PYTHONPATH}" 如果下面这一段不行再切换成这句
 export PYTHONPATH="$CONDA_PREFIX/lib/python3.10/site-packages:$PYTHONPATH"
 ```

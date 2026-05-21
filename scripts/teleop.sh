@@ -14,8 +14,8 @@ FPS="${FPS:-30}"
 CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
 
 exec lerobot-teleoperate \
-  --teleop.type="${LEROBOT_TELEOP_TYPE}" \
-  --robot.type="${LEROBOT_ROBOT_TYPE}" \
+  --teleop.type=mocap_retarget_leader \
+  --robot.type=fr3_eef \
   --robot.cameras="${CAMERAS}" \
   --fps="${FPS}" \
   --display_data=true
