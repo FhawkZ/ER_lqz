@@ -5,8 +5,8 @@
 # 1. Conda：创建并激活
 # ------------------------------------------------------------------------------
 
-conda create -n lerobot_fr3 python=3.12 -y
-conda activate lerobot_fr3
+conda create -n lerobot python=3.12 -y
+conda activate lerobot
 
 # ------------------------------------------------------------------------------
 # 2. Conda：依赖（conda-forge）
@@ -26,10 +26,10 @@ conda install -c conda-forge "ffmpeg=7.1.1" -y
 cd <ER_LQZ_ROOT>/lerobot
 
 # lerobot 可编辑安装（含 RealSense、scipy、async、仿真与策略等 extras）
-pip install -e ".[all]"
+pip install -e ".[all]" -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 
 # dex 手部重定向（默认 teleop/record 必需；不在 lerobot extras 里）
-pip install dex-retargeting
+pip install dex-retargeting -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 
 # 验证
 python -c "import lerobot; import dex_retargeting; print('ok')"

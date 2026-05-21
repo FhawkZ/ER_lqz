@@ -83,7 +83,7 @@ class MocapEefLeaderConfig(TeleoperatorConfig):
     # This matches the option of the same name in `MocapLeaderConfig`. We
     # default to True here because `mocap_eef_leader` is meant to drive the
     # FR3 directly in the robot base frame.
-    enable_mocap_to_fr3_axis_mapping: bool = True
+    enable_mocap_to_fr3_axis_mapping: bool = False
 
     # Per-cycle gains applied to the mocap-derived deltas before accumulation,
     # to make wrist motion reach further on the robot.
