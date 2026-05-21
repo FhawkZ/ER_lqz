@@ -18,6 +18,9 @@ export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
 
 # ROS2 + colcon 安装的 lerobot（优先）；否则使用源码路径
+# setup.bash 会读写尚未定义的 ament 变量；调用方若 set -u 会报错，需临时关闭 nounset
+_lerobot_restore_u=0
+[[ $- == *u* ]] && _lerobot_restore_u=1 && set +u
 if [[ -f /opt/ros/humble/setup.bash ]]; then
   # shellcheck source=/dev/null
   source /opt/ros/humble/setup.bash
@@ -26,16 +29,50 @@ if [[ -f "${ER_LQZ_ROOT}/lerobot/install/setup.bash" ]]; then
   # shellcheck source=/dev/null
   source "${ER_LQZ_ROOT}/lerobot/install/setup.bash"
 fi
+[[ "${_lerobot_restore_u}" == 1 ]] && set -u
+unset _lerobot_restore_u
+
+# scipy/transformers 需要较新 libstdc++（CXXABI_1.3.15）；系统 /lib 往往过旧
+if [[ -n "${CONDA_PREFIX:-}" && -d "${CONDA_PREFIX}/lib" ]]; then
+  case ":${LD_LIBRARY_PATH:-}:" in
+    *:"${CONDA_PREFIX}/lib":*) ;;
+    *) export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ;;
+  esac
+fi
 
 # conda site-packages 优先于 ROS，避免 pinocchio / numpy 版本冲突
+_conda_prefix="${CONDA_PREFIX:-}"
 if command -v python >/dev/null 2>&1; then
   export CONDA_SITE_PACKAGES="$(
     python -c 'import site; print([p for p in site.getsitepackages() if "site-packages" in p][0])' 2>/dev/null \
-      || echo "${CONDA_PREFIX}/lib/python3.12/site-packages"
+      || echo "${_conda_prefix}/lib/python3.12/site-packages"
   )"
 else
-  export CONDA_SITE_PACKAGES="${CONDA_PREFIX}/lib/python3.12/site-packages"
+  export CONDA_SITE_PACKAGES="${_conda_prefix}/lib/python3.12/site-packages"
 fi
-export PYTHONPATH="${CONDA_SITE_PACKAGES}:${ER_LQZ_ROOT}/lerobot/src:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages${PYTHONPATH:+:${PYTHONPATH}}"
+unset _conda_prefix
+
+# conda 的 rclpy 为 py3.12；source setup.bash 会注入 python3.10 的 *_msgs，导致 typesupport 失败
+_lerobot_filter_py310_from_pythonpath() {
+  local IFS=':'
+  local _p _out=()
+  for _p in ${PYTHONPATH:-}; do
+    [[ -z "${_p}" ]] && continue
+    case "${_p}" in
+      */python3.10/*|*/python3.10/dist-packages*|*/python3.10/site-packages*)
+        continue
+        ;;
+    esac
+    _out+=("${_p}")
+  done
+  if ((${#_out[@]})); then
+    PYTHONPATH="$(IFS=:; echo "${_out[*]}")"
+  else
+    unset PYTHONPATH
+  fi
+}
+_lerobot_filter_py310_from_pythonpath
+unset -f _lerobot_filter_py310_from_pythonpath
+export PYTHONPATH="${CONDA_SITE_PACKAGES}:${ER_LQZ_ROOT}/lerobot/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 unset _ENV_SCRIPT

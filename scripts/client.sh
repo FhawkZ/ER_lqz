@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # 异步推理客户端（LeRobot 0.5.1 async_inference）
-# 需先在同一或另一机器运行 scripts/server.sh
+#
+# 必须先启动策略服务端（在 GPU 机器上）:
+#   HOST=0.0.0.0 PORT=8080 bash scripts/server.sh
+# 再在本机:
+#   SERVER_ADDRESS=<GPU机IP>:8080 bash scripts/client.sh
+# 本机联调: SERVER_ADDRESS=127.0.0.1:8080（server 与 client 同机）
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +13,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env_lerobot.sh"
 
 SERVER_ADDRESS="${SERVER_ADDRESS:-172.18.14.81:8080}"
-POLICY_PATH="${POLICY_PATH:-/home/lqz/code/ER_lqz/models/redcube_act/080000/pretrained_model}"
+_server_host="${SERVER_ADDRESS%:*}"
+_server_port="${SERVER_ADDRESS##*:}"
+if ! command -v nc >/dev/null 2>&1; then
+  echo "警告: 未安装 nc，跳过 server 端口检查"
+elif ! nc -zv -w 2 "${_server_host}" "${_server_port}" 2>&1 | grep -q succeeded; then
+  echo "错误: 策略服务未就绪 ${SERVER_ADDRESS} (Connection refused)"
+  echo "请在 GPU 机器执行: HOST=0.0.0.0 PORT=${_server_port} bash scripts/server.sh"
+  exit 1
+fi
+unset _server_host _server_port
+POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/models/act_redcube_merged/checkpoints/060000/pretrained_model}"
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
 ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 

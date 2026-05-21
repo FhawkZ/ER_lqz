@@ -494,25 +494,33 @@ def async_client(cfg: RobotClientConfig):
 
     client = RobotClient(cfg)
 
-    if client.start():
-        client.logger.info("Starting action receiver thread...")
+    if not client.start():
+        client.logger.error(
+            "Policy server unavailable at %s. Start it first, e.g. "
+            "HOST=0.0.0.0 PORT=8080 bash scripts/server.sh",
+            client.server_address,
+        )
+        client.stop()
+        raise SystemExit(1)
 
-        # Create and start action receiver thread
-        action_receiver_thread = threading.Thread(target=client.receive_actions, daemon=True)
+    client.logger.info("Starting action receiver thread...")
 
-        # Start action receiver thread
-        action_receiver_thread.start()
+    # Create and start action receiver thread
+    action_receiver_thread = threading.Thread(target=client.receive_actions, daemon=True)
 
-        try:
-            # The main thread runs the control loop
-            client.control_loop(task=cfg.task)
+    # Start action receiver thread
+    action_receiver_thread.start()
 
-        finally:
-            client.stop()
-            action_receiver_thread.join()
-            if cfg.debug_visualize_queue_size:
-                visualize_action_queue_size(client.action_queue_size)
-            client.logger.info("Client stopped")
+    try:
+        # The main thread runs the control loop
+        client.control_loop(task=cfg.task)
+
+    finally:
+        client.stop()
+        action_receiver_thread.join()
+        if cfg.debug_visualize_queue_size:
+            visualize_action_queue_size(client.action_queue_size)
+        client.logger.info("Client stopped")
 
 
 if __name__ == "__main__":

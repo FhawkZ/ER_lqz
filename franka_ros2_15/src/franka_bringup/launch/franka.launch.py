@@ -146,7 +146,7 @@ def generate_robot_nodes(context):
             package='controller_manager',
             executable='spawner',
             namespace=namespace,
-            arguments=['joint_state_broadcaster'],
+            arguments=['joint_state_broadcaster', '--controller-manager-timeout', '120'],
             output='screen',
         ),
 
@@ -156,7 +156,7 @@ def generate_robot_nodes(context):
             package='controller_manager',
             executable='spawner',
             namespace=namespace,
-            arguments=['franka_robot_state_broadcaster'],
+            arguments=['franka_robot_state_broadcaster', '--controller-manager-timeout', '120'],
             parameters=[{'arm_id': LaunchConfiguration('arm_id').perform(context)}],
             condition=UnlessCondition(LaunchConfiguration('use_fake_hardware')),  # 非仿真才运行
             output='screen',

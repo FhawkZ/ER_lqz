@@ -85,12 +85,11 @@ ros2 launch linker_hand_ros2_sdk linker_hand.launch.py
 
 ### 2.2 遥操作
 
-在遥操作终端中，先激活 conda 环境并保证 pinocchio 优先使用 conda 包[^pythonpath]：
+在遥操作终端中先激活 conda 环境；`scripts/env_lerobot.sh` 会统一处理 `PYTHONPATH`（conda 优先、过滤 ROS 的 python3.10 路径）[^pythonpath]：
 
 ```bash
 conda activate lerobot
-# export PYTHONPATH="$(python -c 'import site; print(next(p for p in site.getsitepackages() if "site-packages" in p))')${PYTHONPATH:+:$PYTHONPATH}" 如果下面这一段不行再切换成这句
-export PYTHONPATH="$CONDA_PREFIX/lib/python3.10/site-packages:$PYTHONPATH"
+bash scripts/install_lerobot_ros_msgs.sh   # 首次或 typesupport 报错时执行
 ```
 
 安装/更新 lerobot 后，脚本会自动 `source` 公共环境（见 `scripts/env_lerobot.sh`）：
@@ -135,6 +134,14 @@ bash scripts/record.sh
 ```
 
 可按环境变量覆盖 `DATASET_REPO_ID`、`NUM_EPISODES`、`SINGLE_TASK` 等（见脚本头部注释）。
+
+**本地策略推理**（与采集同 `fr3_eef` + 相机，无 gRPC；默认权重 `outputs/act_redcube_merged/checkpoints/060000`）：
+
+```bash
+bash scripts/infer_local.sh
+```
+
+可选：`EPISODE_TIME_S=60`、`POLICY_PATH=...`、`WIPE_DATASET=true`（见 `scripts/infer_local.sh` 头部）。
 
 在采集数据的时候，使用的是 rerun[^rerun]。基本使用是：如果该条任务走完，可以直接按“➡️”进入 reset 阶段（双人采集可在这时复原场景）；单人操作建议再按一次“➡️”将该条数据存储下来，利用存储时间简单布置场景。若单条数据录制不满意，可以按“⬅️”回到上一个阶段，需要注意当前是 reset 阶段还是录制阶段，终端会有提示。
 
