@@ -19,19 +19,18 @@
 Mocap-driven leader for the ``fr3_eef`` follower. Unlike ``MocapLeader``
 this implementation does **not** run any inverse kinematics: it accumulates
 the mocap RightHand pose deltas into an absolute end-effector pose target
-in the FR3 base frame and emits that pose as ``[ee_x, ee_y, ee_z, ori_r,
-ori_p, ori_y]`` (extrinsic xyz Euler), which is exactly the schema
-consumed by :class:`FR3EEF.send_action`.
+in the FR3 base frame and emits that pose as ``[ee_x, ee_y, ee_z, ori_qx,
+ori_qy, ori_qz, ori_qw]`` (unit quaternion, scipy ``[x,y,z,w]``), which is
+exactly the schema consumed by :class:`FR3EEF.send_action`.
 
 Coordinate / rotation conventions (must match ``fr3_eef``)::
 
     Position : meters, in the FR3 base link frame (``fr3_link0`` by default)
-    Orientation : extrinsic xyz Euler angles (radians), produced via
-                  ``Rotation.as_euler("xyz")``.
-    Mocap → FR3 axis mapping (same as ``MocapLeader``)::
-        X_robot =  Y_mocap
-        Y_robot = -X_mocap
-        Z_robot =  Z_mocap
+    Orientation : quaternion ``[x,y,z,w]``, sign-aligned each frame so
+                  ``q_i · q_{i-1} >= 0`` (continuous branch for learning).
+    Mocap axis remap (``axis_to_ros_*`` only; same frame as ``fr3_link0``)::
+        position (x_pn,y_pn,z_pn) -> (z_pn,x_pn,y_pn) / 100 m
+        quaternion (w,x,y,z)_pn -> (qx,qy,qz,qw) = (z,x,y,w)_pn
     Rotation accumulation::
         R_new = exp(delta_rotvec_in_base) @ R_current
     which is the same convention as ``MocapLeader``'s IK target
@@ -53,6 +52,7 @@ from rclpy.executors import SingleThreadedExecutor
 from geometry_msgs.msg import PoseStamped
 
 from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
+from lerobot.utils.quat import normalize_quat_xyzw, prepare_quat_xyzw
 
 from ..teleoperator import Teleoperator
 from .config_mocap_eef_leader import MocapEefLeaderConfig
@@ -362,12 +362,11 @@ class MocapEefLeader(Teleoperator):
 
     1. Read the latest mocap RightHand pose (already in ROS-converted frame).
     2. Compute the delta vs the previous frame in mocap space.
-    3. Optionally remap mocap axes to FR3 base axes (X<-Y, Y<-(-X), Z<-Z).
-    4. Scale, low-pass filter, and clamp the delta.
-    5. Accumulate the delta into the internal command pose, which is seeded
+    3. Scale, low-pass filter, and clamp the delta.
+    4. Accumulate the delta into the internal command pose, which is seeded
        on the first frame from the follower's ``arm_pose_state_topic``.
-    6. Emit ``[ee_x, ee_y, ee_z, ori_r, ori_p, ori_y]`` (extrinsic xyz Euler)
-       plus 6 hand joint positions in the same order as ``FR3EEFConfig``.
+    5. Emit ``[ee_x, ee_y, ee_z, ori_qx, ori_qy, ori_qz, ori_qw]`` (quaternion,
+       sign-aligned for continuity) plus 6 hand joint positions.
     """
 
     config_class = MocapEefLeaderConfig
@@ -389,7 +388,7 @@ class MocapEefLeader(Teleoperator):
         self._mocap_thread: threading.Thread | None = None
         self._mocap_stop = threading.Event()
 
-        # Mocap RightHand pose: ((x, y, z), (qw, qx, qy, qz)) in ROS-converted frame.
+        # Mocap RightHand pose: ((x, y, z), (qx, qy, qz, qw)) in ROS-converted frame.
         self._latest_arm_pose: Optional[
             tuple[tuple[float, float, float], tuple[float, float, float, float]]
         ] = None
@@ -407,6 +406,9 @@ class MocapEefLeader(Teleoperator):
 
         # Per-cycle delta low-pass state.
         self._filtered_delta_x: Optional[np.ndarray] = None
+
+        # Previous emitted quaternion (for sign continuity in action / dataset).
+        self._prev_emitted_quat: Optional[np.ndarray] = None
 
         self._debug_counter = 0
 
@@ -633,11 +635,15 @@ class MocapEefLeader(Teleoperator):
         recent measured pose so the very first frame of the new episode does
         not produce a large jump. Also clear filtered delta and previous
         mocap frame so mocap LPF does not carry across episodes.
+
+        Episode start: seed from robot ``current_pose``. First emitted quaternion
+        aligns to that seed; later frames use ``q_i · q_{i-1} >= 0`` only.
         """
         with self._lock:
             self._cmd_pos = None
             self._cmd_quat_xyzw = None
             self._filtered_delta_x = None
+            self._prev_emitted_quat = None
             if self._latest_arm_pose is not None:
                 hand_pos, hand_quat = self._latest_arm_pose
                 self._prev_hand_pose = (
@@ -656,18 +662,20 @@ class MocapEefLeader(Teleoperator):
             [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z],
             dtype=np.float64,
         )
-        self._cmd_quat_xyzw = np.array(
-            [
-                msg.pose.orientation.x,
-                msg.pose.orientation.y,
-                msg.pose.orientation.z,
-                msg.pose.orientation.w,
-            ],
-            dtype=np.float64,
+        self._cmd_quat_xyzw = normalize_quat_xyzw(
+            np.array(
+                [
+                    msg.pose.orientation.x,
+                    msg.pose.orientation.y,
+                    msg.pose.orientation.z,
+                    msg.pose.orientation.w,
+                ],
+                dtype=np.float64,
+            )
         )
 
     def _compute_arm_pose_target(self) -> list[float]:
-        """Return ``[x, y, z, roll, pitch, yaw]`` (extrinsic xyz Euler) target."""
+        """Return ``[x, y, z, qx, qy, qz, qw]`` target (continuous quaternion)."""
         self._wait_for_mocap()
         self._wait_for_arm_pose()
 
@@ -703,19 +711,7 @@ class MocapEefLeader(Teleoperator):
         ).as_rotvec()
         delta_pos_arr = np.array(delta_pos, dtype=np.float64)
 
-        # Mocap → FR3 base axis mapping (same as MocapLeader).
-        if self.config.enable_mocap_to_fr3_axis_mapping:
-            aligned_delta_pos = np.array(
-                [delta_pos_arr[1], -delta_pos_arr[0], delta_pos_arr[2]],
-                dtype=np.float64,
-            )
-            aligned_delta_rotvec = np.array(
-                [delta_rotvec[1], -delta_rotvec[0], delta_rotvec[2]],
-                dtype=np.float64,
-            )
-            delta_x = np.hstack([aligned_delta_pos, aligned_delta_rotvec])
-        else:
-            delta_x = np.hstack([delta_pos_arr, delta_rotvec])
+        delta_x = np.hstack([delta_pos_arr, delta_rotvec])
 
         # Per-cycle gains.
         delta_x[:3] *= float(self.config.delta_pos_gain)
@@ -751,21 +747,26 @@ class MocapEefLeader(Teleoperator):
             self._cmd_pos = self._cmd_pos + delta_x[:3]
             current_rot = Rotation.from_quat(self._cmd_quat_xyzw)
             new_rot = Rotation.from_rotvec(delta_x[3:]) * current_rot
-            self._cmd_quat_xyzw = new_rot.as_quat()
+            raw_quat = normalize_quat_xyzw(new_rot.as_quat())
+            q_anchor = None if self._prev_emitted_quat is not None else self._cmd_quat_xyzw
+            q_out = prepare_quat_xyzw(
+                raw_quat,
+                q_prev=self._prev_emitted_quat,
+                q_anchor=q_anchor,
+            )
+            self._cmd_quat_xyzw = q_out
+            self._prev_emitted_quat = q_out.copy()
             cmd_pos = self._cmd_pos.copy()
-
-        # Convert to extrinsic xyz Euler — matches `fr3_eef.send_action`'s
-        # `Rotation.from_euler("xyz", target_euler)` round-trip.
-        euler = new_rot.as_euler("xyz")
 
         self._debug_counter += 1
         return [
             float(cmd_pos[0]),
             float(cmd_pos[1]),
             float(cmd_pos[2]),
-            float(euler[0]),
-            float(euler[1]),
-            float(euler[2]),
+            float(q_out[0]),
+            float(q_out[1]),
+            float(q_out[2]),
+            float(q_out[3]),
         ]
 
     def _compute_hand_joints(self) -> list[float]:

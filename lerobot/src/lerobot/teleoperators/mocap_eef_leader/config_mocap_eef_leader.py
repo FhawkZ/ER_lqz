@@ -29,9 +29,9 @@ class MocapEefLeaderConfig(TeleoperatorConfig):
     running any inverse kinematics.
 
     Coordinate / rotation conventions (must match `fr3_eef`):
-      * Pose order: ``[ee_x, ee_y, ee_z, ori_r, ori_p, ori_y]``
-      * ``ori_*`` are extrinsic xyz Euler angles (radians), the same convention
-        used by `FR3EEF.send_action` and `FR3EEF._arm_pose_cb`.
+      * Pose order: ``[ee_x, ee_y, ee_z, ori_qx, ori_qy, ori_qz, ori_qw]``
+      * ``ori_q*`` are a unit quaternion (scipy ``[x,y,z,w]``), sign-aligned
+        frame-to-frame for continuous dataset / policy I/O.
       * Position units: meters, in the FR3 base link frame
         (``arm_pose_frame_id`` of the follower, default ``fr3_link0``).
     """
@@ -55,9 +55,10 @@ class MocapEefLeaderConfig(TeleoperatorConfig):
             "ee_x",
             "ee_y",
             "ee_z",
-            "ori_r",
-            "ori_p",
-            "ori_y",
+            "ori_qx",
+            "ori_qy",
+            "ori_qz",
+            "ori_qw",
         ]
     )
 
@@ -71,19 +72,6 @@ class MocapEefLeaderConfig(TeleoperatorConfig):
             "hand_5",
         ]
     )
-
-    # ------------------------------------------------------------------
-    # Mocap → FR3 alignment
-    # ------------------------------------------------------------------
-    # Apply the standard mocap → FR3 axis remapping to BOTH the translation
-    # delta and the rotation-vector delta extracted from the mocap RightHand:
-    #     X_robot =  Y_mocap
-    #     Y_robot = -X_mocap
-    #     Z_robot =  Z_mocap
-    # This matches the option of the same name in `MocapLeaderConfig`. We
-    # default to True here because `mocap_eef_leader` is meant to drive the
-    # FR3 directly in the robot base frame.
-    enable_mocap_to_fr3_axis_mapping: bool = False
 
     # Per-cycle gains applied to the mocap-derived deltas before accumulation,
     # to make wrist motion reach further on the robot.

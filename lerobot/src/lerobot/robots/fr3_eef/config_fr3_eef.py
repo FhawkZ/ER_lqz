@@ -62,16 +62,18 @@ class FR3EEFConfig(RobotConfig):
     ema_alpha_rot: float = 0.2
 
     # Names exposed as observation/action features for the FR3 end-effector.
-    # 6D representation: position (xyz, meters) + orientation (rpy, radians,
-    # extrinsic xyz Euler convention, matching `fr3_linker_l6_follower`).
+    # 7D: position (xyz, meters) + orientation quaternion (qx,qy,qz,qw),
+    # scipy / geometry_msgs ordering. Components are sign-aligned frame-to-frame
+    # for continuous learning signals (see ``FR3EEF._align_obs_quat``).
     arm_pose_names: list[str] = field(
         default_factory=lambda: [
             "ee_x",
             "ee_y",
             "ee_z",
-            "ori_r",
-            "ori_p",
-            "ori_y",
+            "ori_qx",
+            "ori_qy",
+            "ori_qz",
+            "ori_qw",
         ]
     )
 

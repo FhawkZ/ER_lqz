@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 class MocapRetargetLeader(MocapEefLeader):
     """动捕 leader：臂部与 ``MocapEefLeader`` 相同，手部由 dex-retargeting 映射到 Linker L6。
 
-    输出 schema 与 ``mocap_eef_leader`` 一致（6D EE + ``hand_0``…``hand_5``），配对
-    ``fr3_eef`` follower。
+    输出 schema 与 ``mocap_eef_leader`` 一致（7D EE 四元数 + ``hand_0``…``hand_5``），
+    配对 ``fr3_eef`` follower。臂部姿态在 episode 内做四元数符号对齐，episode
+    边界由 ``reset_incremental_pose`` 从机器人 ``current_pose`` 重新锚定。
     """
 
     config_class = MocapRetargetLeaderConfig

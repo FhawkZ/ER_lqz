@@ -27,18 +27,20 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from scipy.spatial.transform import Rotation
+
+from lerobot.utils.quat import orientation_delta_deg
 
 logger = logging.getLogger(__name__)
 
-# Matches fr3_eef / redcube dataset feature order.
+# Matches fr3_eef / redcube dataset feature order (7D EE quaternion).
 STATE_KEYS = [
     "ee_x.pos",
     "ee_y.pos",
     "ee_z.pos",
-    "ori_r.pos",
-    "ori_p.pos",
-    "ori_y.pos",
+    "ori_qx.pos",
+    "ori_qy.pos",
+    "ori_qz.pos",
+    "ori_qw.pos",
     "hand_0.pos",
     "hand_1.pos",
     "hand_2.pos",
@@ -52,7 +54,7 @@ CSV_COLUMNS = (
     + [f"state_{k.replace('.pos', '')}" for k in STATE_KEYS]
     + [f"policy_{k.replace('.pos', '')}" for k in STATE_KEYS]
     + [f"sent_{k.replace('.pos', '')}" for k in STATE_KEYS]
-    + ["ori_delta_deg", "policy_ori_r", "state_ori_r"]
+    + ["ori_delta_deg", "policy_ori_qw", "state_ori_qw"]
 )
 
 
@@ -63,13 +65,6 @@ def _vec_from_action(action: dict[str, Any], keys: list[str] = STATE_KEYS) -> li
             raise KeyError(f"Missing key {k!r} in action dict")
         out.append(float(action[k]))
     return out
-
-
-def _orientation_delta_deg(state_euler: np.ndarray, policy_euler: np.ndarray) -> float:
-    """Geodesic rotation angle between two extrinsic xyz Euler poses (position ignored)."""
-    r0 = Rotation.from_euler("xyz", state_euler)
-    r1 = Rotation.from_euler("xyz", policy_euler)
-    return float(np.degrees((r0.inv() * r1).magnitude()))
 
 
 class InferTraceLogger:
@@ -124,16 +119,16 @@ class InferTraceLogger:
         policy = _vec_from_action(policy_action)
         sent = _vec_from_action(sent_action)
 
-        state_euler = np.array(state[3:6])
-        policy_euler = np.array(policy[3:6])
-        ori_delta = _orientation_delta_deg(state_euler, policy_euler)
+        state_quat = np.array(state[3:7])
+        policy_quat = np.array(policy[3:7])
+        ori_delta = orientation_delta_deg(state_quat, policy_quat)
 
         row = (
             [t_wall, t_episode, loop_hz]
             + state
             + policy
             + sent
-            + [ori_delta, policy[3], state[3]]
+            + [ori_delta, policy[6], state[6]]
         )
         self._writer.writerow(row)
         self._row_count += 1
@@ -159,7 +154,7 @@ def summarize_trace_csv(csv_path: Path) -> dict[str, Any]:
         out["ori_delta_deg_mean"] = float(df["ori_delta_deg"].mean())
         out["ori_delta_deg_max"] = float(df["ori_delta_deg"].max())
         out["ori_delta_deg_p95"] = float(df["ori_delta_deg"].quantile(0.95))
-    for col in ("state_ori_r", "policy_ori_r", "sent_ori_r"):
+    for col in ("state_ori_qw", "policy_ori_qw", "sent_ori_qw"):
         if col in df.columns:
             out[f"{col}_mean"] = float(df[col].mean())
             out[f"{col}_min"] = float(df[col].min())

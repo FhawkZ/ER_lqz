@@ -31,6 +31,7 @@ from scipy.spatial.transform import Rotation
 from lerobot.cameras.utils import make_cameras_from_configs
 from lerobot.processor import RobotObservation
 from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
+from lerobot.utils.quat import normalize_quat_xyzw, prepare_quat_xyzw
 
 from ..robot import Robot
 from .config_fr3_eef import FR3EEFConfig
@@ -48,7 +49,8 @@ class FR3EEF(Robot):
     (`JointState` on `hand_control_topic`).
 
     Pose representation in observation / action:
-        ``[x, y, z, roll, pitch, yaw]`` with extrinsic xyz Euler angles.
+        ``[x, y, z, qx, qy, qz, qw]`` unit quaternion (scipy / geometry_msgs
+        ordering). Quaternion components are sign-aligned frame-to-frame.
     """
 
     config_class = FR3EEFConfig
@@ -67,7 +69,7 @@ class FR3EEF(Robot):
         # Cached states.
         self._arm_pose_msg: Optional[PoseStamped] = None
         self._hand_state_msg: Optional[JointState] = None
-        self.arm_pose_current = np.zeros(6)  # [x, y, z, roll, pitch, yaw]
+        self.arm_pose_current = np.zeros(7)  # [x, y, z, qx, qy, qz, qw]
         self.hand_joints_current = np.zeros(len(self.config.hand_joint_names))
 
         # Publishers.
@@ -77,6 +79,8 @@ class FR3EEF(Robot):
         # Filter state for the EE pose command.
         self._ema_pos: Optional[np.ndarray] = None
         self._ema_quat: Optional[np.ndarray] = None  # [x, y, z, w]
+        # Previous observation quaternion (sign continuity in dataset / policy I/O).
+        self._prev_obs_quat: Optional[np.ndarray] = None
         self._cmd_debug_counter = 0
 
         self.cameras = make_cameras_from_configs(config.cameras)
@@ -145,6 +149,7 @@ class FR3EEF(Robot):
         self._cmd_debug_counter = 0
         self._ema_pos = None
         self._ema_quat = None
+        self._prev_obs_quat = None
 
         for cam in self.cameras.values():
             cam.connect()
@@ -175,6 +180,13 @@ class FR3EEF(Robot):
         """Reset follower-side filter state at episode boundaries."""
         self._ema_pos = None
         self._ema_quat = None
+        self._prev_obs_quat = None
+
+    def _align_obs_quat(self, q_raw: np.ndarray) -> np.ndarray:
+        """Episode 内 ``q·q_prev>=0``；首帧仅 normalize（与 ROS 同支）。"""
+        q = prepare_quat_xyzw(q_raw, q_prev=self._prev_obs_quat)
+        self._prev_obs_quat = q.copy()
+        return q
 
     # ---------------------------------------------------------------------
     # ROS callbacks
@@ -182,12 +194,15 @@ class FR3EEF(Robot):
     def _arm_pose_cb(self, msg: PoseStamped) -> None:
         p = msg.pose.position
         q = msg.pose.orientation
-        # quat order in scipy: [x, y, z, w]
-        euler = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")
+        q_raw = normalize_quat_xyzw(
+            np.array([q.x, q.y, q.z, q.w], dtype=np.float64)
+        )
         with self._lock:
             self._arm_pose_msg = msg
+            q_cont = self._align_obs_quat(q_raw)
             self.arm_pose_current = np.array(
-                [p.x, p.y, p.z, euler[0], euler[1], euler[2]], dtype=np.float64
+                [p.x, p.y, p.z, q_cont[0], q_cont[1], q_cont[2], q_cont[3]],
+                dtype=np.float64,
             )
 
     def _hand_state_cb(self, msg: JointState) -> None:
@@ -251,8 +266,7 @@ class FR3EEF(Robot):
             raw_pose.append(value)
 
         target_pos = np.array(raw_pose[:3], dtype=np.float64)
-        target_euler = np.array(raw_pose[3:6], dtype=np.float64)
-        target_quat = Rotation.from_euler("xyz", target_euler).as_quat()  # [x, y, z, w]
+        target_quat = normalize_quat_xyzw(np.array(raw_pose[3:7], dtype=np.float64))
 
         # ---- 2. Hand action ----
         hand_pos = []
@@ -304,16 +318,14 @@ class FR3EEF(Robot):
         # Orientation: SLERP between previous filtered quat and target quat.
         alpha_rot = max(0.01, min(1.0, float(self.config.ema_alpha_rot)))
         if self._ema_quat is None:
-            self._ema_quat = meas_quat.copy()
-        # Resolve double-cover sign so SLERP follows the short arc.
-        if float(np.dot(self._ema_quat, target_quat)) < 0.0:
-            target_quat = -target_quat
+            self._ema_quat = normalize_quat_xyzw(meas_quat)
+        target_quat = prepare_quat_xyzw(target_quat, q_prev=self._ema_quat)
         safe_quat = self._slerp(self._ema_quat, target_quat, alpha_rot)
         # Normalize to guard against numerical drift.
         norm = np.linalg.norm(safe_quat)
         if norm > 1e-9:
             safe_quat = safe_quat / norm
-        self._ema_quat = safe_quat
+        self._ema_quat = normalize_quat_xyzw(safe_quat)
 
         # ---- 6. Publish PoseStamped ----
         pose_msg = PoseStamped()
