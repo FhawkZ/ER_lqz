@@ -38,6 +38,18 @@ from lerobot.policies.pretrained import PreTrainedPolicy
 from lerobot.utils.constants import ACTION, OBS_ENV_STATE, OBS_IMAGES, OBS_STATE
 
 
+def _make_resnet_backbone(
+    config: ACTConfig, pretrained_weights: str | None
+) -> tuple[IntermediateLayerGetter, int]:
+    backbone_model = getattr(torchvision.models, config.vision_backbone)(
+        replace_stride_with_dilation=[False, False, config.replace_final_stride_with_dilation],
+        weights=pretrained_weights,
+        norm_layer=FrozenBatchNorm2d,
+    )
+    backbone = IntermediateLayerGetter(backbone_model, return_layers={"layer4": "feature_map"})
+    return backbone, backbone_model.fc.in_features
+
+
 class ACTPolicy(PreTrainedPolicy):
     """
     Action Chunking Transformer Policy as per Learning Fine-Grained Bimanual Manipulation with Low-Cost
@@ -71,19 +83,19 @@ class ACTPolicy(PreTrainedPolicy):
     def get_optim_params(self) -> dict:
         # TODO(aliberts, rcadene): As of now, lr_backbone == lr
         # Should we remove this and just `return self.parameters()`?
+
+        def _is_backbone_param(name: str) -> bool:
+            return name.startswith("model.backbone") or name.startswith("model.backbones")
+
         return [
             {
                 "params": [
-                    p
-                    for n, p in self.named_parameters()
-                    if not n.startswith("model.backbone") and p.requires_grad
+                    p for n, p in self.named_parameters() if not _is_backbone_param(n) and p.requires_grad
                 ]
             },
             {
                 "params": [
-                    p
-                    for n, p in self.named_parameters()
-                    if n.startswith("model.backbone") and p.requires_grad
+                    p for n, p in self.named_parameters() if _is_backbone_param(n) and p.requires_grad
                 ],
                 "lr": self.config.optimizer_lr_backbone,
             },
@@ -141,9 +153,10 @@ class ACTPolicy(PreTrainedPolicy):
 
         actions_hat, (mu_hat, log_sigma_x2_hat) = self.model(batch)
 
-        l1_loss = (
-            F.l1_loss(batch[ACTION], actions_hat, reduction="none") * ~batch["action_is_pad"].unsqueeze(-1)
-        ).mean()
+        abs_err = F.l1_loss(batch[ACTION], actions_hat, reduction="none")
+        valid_mask = ~batch["action_is_pad"].unsqueeze(-1)
+        num_valid = valid_mask.sum() * abs_err.shape[-1]
+        l1_loss = (abs_err * valid_mask).sum() / num_valid.clamp_min(1)
 
         loss_dict = {"l1_loss": l1_loss.item()}
         if self.config.use_vae:
@@ -321,15 +334,20 @@ class ACT(nn.Module):
 
         # Backbone for image feature extraction.
         if self.config.image_features:
-            backbone_model = getattr(torchvision.models, config.vision_backbone)(
-                replace_stride_with_dilation=[False, False, config.replace_final_stride_with_dilation],
-                weights=config.pretrained_backbone_weights,
-                norm_layer=FrozenBatchNorm2d,
-            )
-            # Note: The assumption here is that we are using a ResNet model (and hence layer4 is the final
-            # feature map).
-            # Note: The forward method of this returns a dict: {"feature_map": output}.
-            self.backbone = IntermediateLayerGetter(backbone_model, return_layers={"layer4": "feature_map"})
+            if config.separate_backbones_per_image:
+                backbones = []
+                backbone_out_channels = None
+                for img_key in config.image_features:
+                    backbone, out_channels = _make_resnet_backbone(
+                        config, self._pretrained_weights_for_image(img_key)
+                    )
+                    backbones.append(backbone)
+                    backbone_out_channels = out_channels
+                self.backbones = nn.ModuleList(backbones)
+            else:
+                self.backbone, backbone_out_channels = _make_resnet_backbone(
+                    config, config.pretrained_backbone_weights
+                )
 
         # Transformer (acts as VAE decoder when training with the variational objective).
         self.encoder = ACTEncoder(config)
@@ -348,7 +366,7 @@ class ACT(nn.Module):
         self.encoder_latent_input_proj = nn.Linear(config.latent_dim, config.dim_model)
         if self.config.image_features:
             self.encoder_img_feat_input_proj = nn.Conv2d(
-                backbone_model.fc.in_features, config.dim_model, kernel_size=1
+                backbone_out_channels, config.dim_model, kernel_size=1
             )
         # Transformer encoder positional embeddings.
         n_1d_tokens = 1  # for the latent
@@ -368,6 +386,12 @@ class ACT(nn.Module):
         self.action_head = nn.Linear(config.dim_model, self.config.action_feature.shape[0])
 
         self._reset_parameters()
+
+    def _pretrained_weights_for_image(self, image_key: str) -> str | None:
+        per_image = self.config.pretrained_backbone_weights_per_image
+        if per_image is not None and image_key in per_image:
+            return per_image[image_key]
+        return self.config.pretrained_backbone_weights
 
     def _reset_parameters(self):
         """Xavier-uniform initialization of the transformer parameters as in the original code."""
@@ -469,8 +493,11 @@ class ACT(nn.Module):
             # For a list of images, the H and W may vary but H*W is constant.
             # NOTE: If modifying this section, verify on MPS devices that
             # gradients remain stable (no explosions or NaNs).
-            for img in batch[OBS_IMAGES]:
-                cam_features = self.backbone(img)["feature_map"]
+            for cam_index, img in enumerate(batch[OBS_IMAGES]):
+                if self.config.separate_backbones_per_image:
+                    cam_features = self.backbones[cam_index](img)["feature_map"]
+                else:
+                    cam_features = self.backbone(img)["feature_map"]
                 cam_pos_embed = self.encoder_cam_feat_pos_embed(cam_features).to(dtype=cam_features.dtype)
                 cam_features = self.encoder_img_feat_input_proj(cam_features)
 

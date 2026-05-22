@@ -59,6 +59,11 @@ class ACTConfig(PreTrainedConfig):
             `None` means no pretrained weights.
         replace_final_stride_with_dilation: Whether to replace the ResNet's final 2x2 stride with a dilated
             convolution.
+        separate_backbones_per_image: If True, instantiate one ResNet backbone per visual input (e.g. RGB vs
+            mask) instead of sharing weights across cameras.
+        pretrained_backbone_weights_per_image: Optional per-image pretrained weights. Keys must match
+            `input_features` image keys (e.g. `observation.images.top_mask`). Missing keys fall back to
+            `pretrained_backbone_weights`. Use `null` for random initialization on that stream.
         pre_norm: Whether to use "pre-norm" in the transformer blocks.
         dim_model: The transformer blocks' main hidden dimension.
         n_heads: The number of heads to use in the transformer blocks' multi-head attention.
@@ -99,6 +104,8 @@ class ACTConfig(PreTrainedConfig):
     vision_backbone: str = "resnet18"
     pretrained_backbone_weights: str | None = "ResNet18_Weights.IMAGENET1K_V1"
     replace_final_stride_with_dilation: int = False
+    separate_backbones_per_image: bool = False
+    pretrained_backbone_weights_per_image: dict[str, str | None] | None = None
     # Transformer layers.
     pre_norm: bool = False
     dim_model: int = 512

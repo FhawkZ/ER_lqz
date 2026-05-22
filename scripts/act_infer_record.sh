@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=env_lerobot.sh
 source "${SCRIPT_DIR}/env_lerobot.sh"
 
-POLICY_PATH="${POLICY_PATH:-/home/franka/lqz/models/redcube_act/040000/pretrained_model}"
+POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/models/act_redcube_merged_quat/checkpoints/100000/pretrained_model}"
 DATASET_REPO_ID="${DATASET_REPO_ID:-local/eval_act_infer_fr3_l6}"
 DATASET_ROOT="${DATASET_ROOT:-/home/franka/lqz/Data/act_infer_fr3_l6}"
 
