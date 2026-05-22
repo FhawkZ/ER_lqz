@@ -4,8 +4,10 @@
 Targets datasets like ``data/redcube1`` where ``action`` / ``observation.state`` use
 ``ori_r, ori_p, ori_y``. Output matches live teleop/record:
 
-* Episode 0: ``obs`` normalize only; ``action`` frame 0 aligns to ``obs`` frame 0.
-* Later frames: ``q_i · q_{i-1} >= 0`` within each stream (no global ``qw >= 0``).
+* Matches live temporal rules (no per-frame action/obs sync): episode 0 ``action`` aligns
+  to ``obs``; later frames use ``q_i · q_{i-1} >= 0`` per stream.
+* **Default** ``--global-quat-canonical``: offline Euler data need dataset-wide ``q_ref``
+  (live record assumes ROS ``current_pose`` is already consistent; migrated data are not).
 
 Also refreshes ``meta/info.json``, ``meta/stats.json``, and ``meta/episodes/*.parquet``
 (per-episode stats columns).
@@ -50,7 +52,7 @@ from lerobot.datasets.utils import (
     EPISODES_DIR,
     flatten_dict,
 )
-from lerobot.utils.quat import normalize_quat_xyzw, prepare_quat_xyzw
+from lerobot.utils.quat import align_quat_hemisphere, normalize_quat_xyzw, prepare_quat_xyzw
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +107,23 @@ def _euler_vec_to_quat_vec(vec: np.ndarray) -> np.ndarray:
     return np.concatenate([pos, quat, hand], axis=-1)
 
 
+def _make_global_quat_ref(state_ep0_q: np.ndarray) -> np.ndarray:
+    """Dataset-wide quaternion hemisphere (same physical pose -> same coeffs)."""
+    q_ref = normalize_quat_xyzw(state_ep0_q)
+    if q_ref[3] < 0.0:
+        q_ref = -q_ref
+    return q_ref
+
+
+def _apply_global_quat_ref(arr: np.ndarray, q_ref: np.ndarray) -> np.ndarray:
+    out = arr.copy()
+    for i in range(len(out)):
+        out[i, 3:7] = align_quat_hemisphere(out[i, 3:7], q_ref)
+    return out
+
+
 def _align_episode_pair(action: np.ndarray, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Match live record: obs chain + action[0] anchored to obs[0]."""
+    """Within-episode temporal continuity; action[0] anchored to obs[0]."""
     state_out = state.copy()
     action_out = action.copy()
     prev_obs: np.ndarray | None = None
@@ -123,6 +140,20 @@ def _align_episode_pair(action: np.ndarray, state: np.ndarray) -> tuple[np.ndarr
         prev_act = q_act.copy()
         action_out[i, 3:7] = q_act
     return action_out, state_out
+
+
+def _finalize_episode_quats(
+    action: np.ndarray,
+    state: np.ndarray,
+    q_ref: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Same temporal rules as live record; optional global ref for legacy Euler datasets."""
+    action, state = _align_episode_pair(action, state)
+    if q_ref is not None:
+        state = _apply_global_quat_ref(state, q_ref)
+        action = _apply_global_quat_ref(action, q_ref)
+        action, state = _align_episode_pair(action, state)
+    return action, state
 
 
 def _update_info(info: dict) -> dict:
@@ -150,7 +181,11 @@ def _copy_tree(src: Path, dst: Path, symlink_videos: bool) -> None:
             shutil.copytree(s, d)
 
 
-def _process_data_parquet(src_path: Path, dst_path: Path) -> dict[int, dict]:
+def _process_data_parquet(
+    src_path: Path,
+    dst_path: Path,
+    q_ref: np.ndarray | None,
+) -> dict[int, dict]:
     """Transform one data parquet file; return per-episode stats inputs."""
     df = pd.read_parquet(src_path)
     episode_stats_inputs: dict[int, dict] = {}
@@ -163,7 +198,7 @@ def _process_data_parquet(src_path: Path, dst_path: Path) -> dict[int, dict]:
 
         actions = np.stack([_euler_vec_to_quat_vec(a) for a in actions])
         states = np.stack([_euler_vec_to_quat_vec(s) for s in states])
-        actions, states = _align_episode_pair(actions, states)
+        actions, states = _finalize_episode_quats(actions, states, q_ref)
 
         row_index = df.index[mask]
         df.loc[mask, "action"] = pd.Series(
@@ -246,12 +281,25 @@ def _rebuild_episodes_meta(
     write_stats(global_stats, dst_root)
 
 
+def _resolve_global_quat_ref(src_root: Path, global_quat_canonical: bool) -> np.ndarray | None:
+    if not global_quat_canonical:
+        return None
+    df = pd.read_parquet(next((src_root / "data").glob("*/*.parquet")))
+    ep0 = int(sorted(df["episode_index"].unique())[0])
+    s0 = np.stack(df.loc[df["episode_index"] == ep0, "observation.state"].values)[0]
+    s0q = _euler_vec_to_quat_vec(s0.astype(np.float64))
+    q_ref = _make_global_quat_ref(s0q[3:7])
+    logger.info("Global quat ref (ep0 obs, qw>=0): %s", q_ref)
+    return q_ref
+
+
 def migrate_dataset(
     src_root: Path,
     dst_root: Path,
     *,
     symlink_videos: bool = True,
     overwrite: bool = False,
+    global_quat_canonical: bool = True,
 ) -> None:
     src_root = src_root.resolve()
     dst_root = dst_root.resolve()
@@ -276,13 +324,15 @@ def migrate_dataset(
     info = _update_info(info)
     write_info(info, dst_root)
 
+    q_ref = _resolve_global_quat_ref(src_root, global_quat_canonical)
+
     src_data_files = sorted((src_root / "data").glob("*/*.parquet"))
     episode_stats_by_ep: dict[int, dict] = {}
 
     for src_pq in tqdm(src_data_files, desc="data parquet"):
         rel = src_pq.relative_to(src_root / "data")
         dst_pq = dst_root / "data" / rel
-        ep_partial = _process_data_parquet(src_pq, dst_pq)
+        ep_partial = _process_data_parquet(src_pq, dst_pq, q_ref)
         for ep_idx, data in ep_partial.items():
             if ep_idx in episode_stats_by_ep:
                 raise RuntimeError(f"Duplicate episode_index {ep_idx} across data files")
@@ -347,8 +397,21 @@ def main() -> int:
         action="store_true",
         help="Replace output directory if it exists",
     )
+    parser.add_argument(
+        "--global-quat-canonical",
+        action="store_true",
+        default=True,
+        help="Sign-align all quats to dataset q_ref (default; required for offline Euler)",
+    )
+    parser.add_argument(
+        "--no-global-quat-canonical",
+        action="store_false",
+        dest="global_quat_canonical",
+        help="Per-episode align only (debug; not for production Euler migration)",
+    )
     args = parser.parse_args()
     symlink_videos = not args.copy_videos
+    global_quat_canonical = args.global_quat_canonical
 
     if args.input_dir is not None:
         if args.output_dir is None:
@@ -358,6 +421,7 @@ def main() -> int:
             args.output_dir,
             symlink_videos=symlink_videos,
             overwrite=args.overwrite,
+            global_quat_canonical=global_quat_canonical,
         )
         return 0
 
@@ -376,6 +440,7 @@ def main() -> int:
             dst,
             symlink_videos=symlink_videos,
             overwrite=args.overwrite,
+            global_quat_canonical=global_quat_canonical,
         )
     return 0
 
