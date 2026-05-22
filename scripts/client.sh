@@ -23,7 +23,7 @@ elif ! nc -zv -w 2 "${_server_host}" "${_server_port}" 2>&1 | grep -q succeeded;
   exit 1
 fi
 unset _server_host _server_port
-POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/models/act_redcube_merged/checkpoints/060000/pretrained_model}"
+POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/models/act_redcube_merged_quat/checkpoints/100000/pretrained_model}"
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
 ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 

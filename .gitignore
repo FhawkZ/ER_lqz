@@ -36,3 +36,8 @@ logs/
 
 # 若曾把 lerobot 独立仓库的 .git 备份在此
 lerobot/.git.backup_nested
+
+# 本地打包备份（勿提交；不删除远程已有大文件，另一台机器 pull 后文件仍在）
+lerobot/linkerhand_mocap.tar
+*.tar
+!*.tar.bz2
