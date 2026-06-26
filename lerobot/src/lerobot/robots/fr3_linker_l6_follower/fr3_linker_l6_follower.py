@@ -175,6 +175,29 @@ class FR3LinkerL6Follower(Robot):
         self._ema_arm_pos = None
         self._last_published_arm_pos = None
 
+    # def goto_restart(self) -> None:
+        """No special restart pose needed for follower."""
+        # hz = float(self.config.control_hz)
+        traj_dt_s =2.0
+
+        arm_msg = JointTrajectory()
+        arm_msg.header.stamp = self._node.get_clock().now().to_msg()
+        arm_msg.joint_names = list(self.config.arm_joint_names)
+        point = JointTrajectoryPoint()
+        point.positions = [0.0007380405615, -0.5938406361, -0.003618517765, -2.9867247502, -0.010977637307, 2.3876657481, 0.8029543595]
+        point.time_from_start = Duration(seconds=traj_dt_s).to_msg()
+        arm_msg.points = [point]
+        self._arm_pub.publish(arm_msg)
+
+        hand_msg = JointState()
+        hand_msg.header.stamp = self._node.get_clock().now().to_msg()
+        hand_msg.name = list(self.config.hand_joint_names)
+        hand_msg.position = [255.0, 255.0, 255.0, 255.0, 255.0, 255.0]  # Fully open hand
+        self._hand_pub.publish(hand_msg)
+
+        time.sleep(2.0)  # Allow some time for the robot to reach the restart pose
+
+
     def _arm_state_cb(self, msg: JointState) -> None:
         with self._lock:
             self._arm_state_msg = msg
@@ -292,25 +315,6 @@ class FR3LinkerL6Follower(Robot):
         self._arm_pub.publish(arm_msg)
 
         self._cmd_debug_counter += 1
-        # if self._cmd_debug_counter % 20 == 0:
-        #     max_raw_to_meas = max(abs(raw_arm_pos[i] - current_pos[i]) for i in range(len(raw_arm_pos)))
-        #     max_safe_to_meas = max(
-        #         abs(safe_arm_pos[i] - current_pos[i]) for i in range(len(safe_arm_pos))
-        #     )
-        #     max_cmd_step = 0.0
-        #     if self._last_published_arm_pos is not None:
-        #         max_cmd_step = max(
-        #             abs(safe_arm_pos[i] - self._last_published_arm_pos[i])
-        #             for i in range(len(safe_arm_pos))
-        #         )
-        #     logger.info(
-        #         "Send FR3 cmd(rad)=%s max|raw-meas|=%.5f max|safe-meas|=%.5f max|cmd_step|=%.5f traj_dt=%.4fs",
-        #         [round(v, 4) for v in safe_arm_pos],
-        #         max_raw_to_meas,
-        #         max_safe_to_meas,
-        #         max_cmd_step,
-        #         traj_dt_s,
-        #     )
         self._last_published_arm_pos = list(safe_arm_pos)
 
         hand_pos = []

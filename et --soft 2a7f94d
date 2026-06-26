@@ -1,0 +1,24 @@
+[33m076f496[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat(act): multi-backbone per image, masked L1 loss, and exports
+[33m2a7f94d[m chore: extend gitignore for local tarballs; update client policy path
+[33m38ac194[m add migrate
+[33m08f5244[m fix the eular to quart
+[33me06a315[m 521 need to fix the bug of eular
+[33m58a1a1d[m add some needed
+[33m3112dc2[m conda
+[33mc2cc3a3[m 更新 client.sh 为本机 EE 推理配置
+[33mc1f0990[m FIX THE DIRECTION OF EEF
+[33m2c9ee21[m add conda env
+[33m3ac0069[m fix mocap_py
+[33mdedf2b9[m fix scripts
+[33md562db5[m upgrade lerobot
+[33mc26c722[m add mocap_retarget
+[33m023f965[m add eef control
+[33mec9e60c[m fix the bug of hand state
+[33mf6e7fc1[m add serl_controller
+[33m2d01d53[m add  sync guidance
+[33me1bc4f0[m fix the merge conflict with zjz
+[33mec01469[m add async inference
+[33mf8d8ca7[m add inference
+[33m95e6884[m add README
+[33mcd69ce6[m add README.md
+[33m8b21398[m after organization

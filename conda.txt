@@ -17,7 +17,8 @@ conda activate lerobot
 conda install -c conda-forge pinocchio -y
 
 # ffmpeg：数据采集流式编码（record.sh streaming_encoding）
-conda install -c conda-forge "ffmpeg=7.1.1" -y
+# 须在 rclpy 之后安装；勿 pin 7.1.1（与 robostack libprotobuf 冲突）。
+# 推荐顺序: bash scripts/install_lerobot_ros_msgs.sh → conda install -c conda-forge pinocchio -y → conda install -c conda-forge ffmpeg -y
 
 # ------------------------------------------------------------------------------
 # 3. pip：在 <ER_LQZ_ROOT>/lerobot 目录下执行（先 conda activate）

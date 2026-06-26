@@ -23,7 +23,7 @@ elif ! nc -zv -w 2 "${_server_host}" "${_server_port}" 2>&1 | grep -q succeeded;
   exit 1
 fi
 unset _server_host _server_port
-POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/models/act_redcube_merged_quat/checkpoints/100000/pretrained_model}"
+POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/ER_lqz/models/pi0_redcube_lora_vlm_bs8/checkpoints/160000/pretrained_model}"
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
 ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 
@@ -33,11 +33,11 @@ exec python -m lerobot.async_inference.robot_client \
   --robot.type="${ROBOT_TYPE}" \
   --robot.cameras="${CAMERAS}" \
   --server_address="${SERVER_ADDRESS}" \
-  --policy_type="${POLICY_TYPE:-act}" \
+  --policy_type="${POLICY_TYPE:-pi0}" \
   --pretrained_name_or_path="${POLICY_PATH}" \
-  --actions_per_chunk="${ACTIONS_PER_CHUNK:-100}" \
-  --chunk_size_threshold="${CHUNK_SIZE_THRESHOLD:-0.5}" \
-  --aggregate_fn_name="${AGGREGATE_FN:-weighted_average}" \
+  --actions_per_chunk="${ACTIONS_PER_CHUNK:-50}" \
+  --chunk_size_threshold="${CHUNK_SIZE_THRESHOLD:-0}" \
+  --aggregate_fn_name="${AGGREGATE_FN:-conservative}" \
   --fps="${FPS:-30}" \
   --task="${TASK:-pick the red cube and drop it in box}" \
   --policy_device="${POLICY_DEVICE:-cuda}" \

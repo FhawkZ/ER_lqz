@@ -762,7 +762,8 @@ class MocapLeader(Teleoperator):
         except Exception:
             q_seed = None
         with self._lock:
-            self._virtual_q = q_seed
+            # self._virtual_q = q_seed
+            self._virtual_q = np.array([0.0007380405615, -0.5938406361, -0.003618517765, -2.9867247502, -0.010977637307, 2.3876657481, 0.8029543595], dtype=np.float64)
             self._filtered_delta_x = None
             if self._latest_arm_pose is not None:
                 hand_pos, hand_quat = self._latest_arm_pose
@@ -867,8 +868,30 @@ class MocapLeader(Teleoperator):
             delta_x[3:] *= self._max_delta_rot_per_cycle / delta_rot_norm
 
         ############################### add new ##############################
-        self.hand_pose_target = self.hand_pose_current.copy() + delta_x  # Update hand pose target for follower based on current pose + delta
-        print(f"🚀🚀🚀🚀 delta_pos: {delta_x[:3]}, delta_rot: {delta_x[3:]}")
+        # delta_x[3]=0.0
+        # delta_x[4]=0.0
+        # 拆分平移增量
+        delta_pos = delta_x[:3]
+        delta_rotvec = delta_x[3:]
+
+        # 拆分当前位姿：平移 + 欧拉角xyz
+        curr = np.array(self.hand_pose_current, dtype=np.float64)
+        curr_pos = curr[:3]
+        curr_euler = curr[3:]
+
+        # 平移直接叠加
+        new_pos = curr_pos + delta_pos
+
+        # 1. 自动修正旋转：将当前姿态对齐至 X=pi, Y=0，Z保持当前值
+        rot_curr = Rotation.from_euler("xyz", curr_euler, degrees=False)
+        rot_mocap_z_local = Rotation.from_rotvec(delta_rotvec)
+        rot_new = rot_curr * rot_mocap_z_local
+        
+        new_euler = rot_new.as_euler("xyz", degrees=False)
+        self.hand_pose_target = np.hstack([new_pos, new_euler])
+
+        # 调试打印
+        print(f"🚀🚀🚀🚀 delta_pos: {delta_pos}, final_rotvec: {delta_rotvec}")
         print(f"🚀🚀🚀🚀 hand_pose_current before update: {self.hand_pose_current}")
         print(f"🚀🚀🚀🚀 hand_pose_target after update: {self.hand_pose_target}")
         ############################### add new ##############################
@@ -965,3 +988,52 @@ class MocapLeader(Teleoperator):
         self._node = None
         self._spin_thread = None
         logger.info("%s disconnected", self)
+
+
+
+
+
+
+
+        # # 移除冗余 delta_x[3]=0 / delta_x[4]=0
+        # # 拆分平移增量
+        # delta_pos = delta_x[:3]
+
+        # # 拆分当前位姿：平移 + 欧拉角xyz
+        # curr = np.array(self.hand_pose_current, dtype=np.float64)
+        # curr_pos = curr[:3]
+        # curr_euler = curr[3:]
+
+        # # 平移直接叠加
+        # new_pos = curr_pos + delta_pos
+
+        # pi = 3.1415916
+        # target_euler = np.array([curr_euler[0], 0.0, curr_euler[2]])
+
+        # # 1. 自动修正旋转：将当前姿态对齐至 X=pi, Y=0，Z保持当前值
+        # rot_curr = Rotation.from_euler("xyz", curr_euler, degrees=False)
+        # rot_target = Rotation.from_euler("xyz", target_euler, degrees=False)
+        # rot_fix = rot_target * rot_curr.inv()
+
+        # # 2. 提取动捕原始旋转增量，仅保留末端局部Z轴旋转
+        # delta_rotvec_origin = delta_x[3:].copy()
+        # local_z_rotvec = np.array([0.0, 0.0, delta_rotvec_origin[2]])
+        # rot_mocap_z_local = Rotation.from_rotvec(local_z_rotvec)
+
+        # # 3. 复合总旋转增量：先对齐姿态，再叠加手爪自身滚转
+        # rot_total_delta = rot_fix * rot_mocap_z_local
+        # final_rotvec = rot_total_delta.as_rotvec()
+
+        # # 覆盖delta_x旋转分量，送入增量IK
+        # delta_x[3:] = final_rotvec
+        # delta_rotvec = final_rotvec
+
+        # # 更新目标末端位姿用于打印观测
+        # rot_new = rot_curr * rot_total_delta
+        # new_euler = rot_new.as_euler("xyz", degrees=False)
+        # self.hand_pose_target = np.hstack([new_pos, new_euler])
+
+        # # 调试打印
+        # print(f"🚀🚀🚀🚀 delta_pos: {delta_pos}, final_rotvec: {delta_rotvec}")
+        # print(f"🚀🚀🚀🚀 hand_pose_current before update: {self.hand_pose_current}")
+        # print(f"🚀🚀🚀🚀 hand_pose_target after update: {self.hand_pose_target}")

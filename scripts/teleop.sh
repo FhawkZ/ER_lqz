@@ -31,7 +31,7 @@ n.destroy_node()
 rclpy.shutdown()
 " || exit 1
 
-FPS="${FPS:-30}"
+FPS="${FPS:-60}"
 CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'
 
 exec lerobot-teleoperate \

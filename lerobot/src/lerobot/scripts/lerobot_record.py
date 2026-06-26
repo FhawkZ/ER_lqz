@@ -355,6 +355,8 @@ def record_loop(
 
     if hasattr(robot, "reset_motion_state"):
         robot.reset_motion_state()
+        log_say("Start")
+        time.sleep(2)  # Wait for the robot to reset its motion state before starting the episode
 
     # Reset policy and processor if they are provided
     if policy is not None and preprocessor is not None and postprocessor is not None:
@@ -629,7 +631,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
-                log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
+                # log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
                 record_loop(
                     robot=robot,
                     events=events,
@@ -655,7 +657,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                 if not events["stop_recording"] and (
                     (recorded_episodes < cfg.dataset.num_episodes - 1) or events["rerecord_episode"]
                 ):
-                    log_say("Reset the environment", cfg.play_sounds)
+                    # log_say("Reset the environment", cfg.play_sounds)
 
                     record_loop(
                         robot=robot,
@@ -671,7 +673,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     )
 
                 if events["rerecord_episode"]:
-                    log_say("Re-record episode", cfg.play_sounds)
+                    # log_say("Re-record episode", cfg.play_sounds)
                     events["rerecord_episode"] = False
                     events["exit_early"] = False
                     dataset.clear_episode_buffer()
@@ -680,7 +682,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                 dataset.save_episode()
                 recorded_episodes += 1
     finally:
-        log_say("Stop recording", cfg.play_sounds, blocking=True)
+        # log_say("Stop recording", cfg.play_sounds, blocking=True)
 
         if dataset:
             dataset.finalize()
@@ -696,7 +698,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         if cfg.dataset.push_to_hub:
             dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
 
-        log_say("Exiting", cfg.play_sounds)
+        # log_say("Exiting", cfg.play_sounds)
     return dataset
 
 
