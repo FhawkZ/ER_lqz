@@ -88,5 +88,25 @@ class FR3EEFConfig(RobotConfig):
         ]
     )
 
+    # Franka 连杆侧关节力矩传感器 tau_J（libfranka: measured link-side joint torque）。
+    # 来自 franka_robot_state_broadcaster 的 measured_joint_states，读 JointState.effort。
+    # 置空字符串可关闭（不订阅、不写入 observation）。
+    # 另可选 external_joint_torques（tau_ext_hat_filtered，估计外力矩，非原始传感器）：
+    #   /NS_1/franka_robot_state_broadcaster/external_joint_torques
+    joint_torque_state_topic: str = (
+        "/NS_1/franka_robot_state_broadcaster/measured_joint_states"
+    )
+    arm_joint_names: list[str] = field(
+        default_factory=lambda: [
+            "fr3_joint1",
+            "fr3_joint2",
+            "fr3_joint3",
+            "fr3_joint4",
+            "fr3_joint5",
+            "fr3_joint6",
+            "fr3_joint7",
+        ]
+    )
+
     timeout_s: float = 5.0
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
