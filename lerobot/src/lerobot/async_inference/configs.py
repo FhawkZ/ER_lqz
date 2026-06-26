@@ -64,6 +64,15 @@ class PolicyServerConfig:
         default=DEFAULT_OBS_QUEUE_TIMEOUT, metadata={"help": "Timeout for observation queue in seconds"}
     )
 
+    record_inference: bool = field(
+        default=True,
+        metadata={"help": "Save images, state, and action chunk for each server inference"},
+    )
+    trace_dir: str = field(
+        default="logs/inference_traces",
+        metadata={"help": "Directory for per-inference trace records (images + actions.csv)"},
+    )
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         if self.port < 1 or self.port > 65535:

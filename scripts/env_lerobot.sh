@@ -15,7 +15,15 @@ export LEROBOT_ROBOT_TYPE="${LEROBOT_ROBOT_TYPE:-fr3_eef}"
 
 # Hugging Face 镜像（不需要时: unset HF_ENDPOINT）
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
+# franka 机器默认缓存；不可写或不存在时落到项目内 .cache/hf（SmolVLA 需拉 VLM 配置）
+if [[ -d /home/franka/lqz/hf && -w /home/franka/lqz/hf ]]; then
+  export HF_HOME="${HF_HOME:-/home/franka/lqz/hf}"
+elif [[ -n "${HF_HOME:-}" && -d "${HF_HOME}" && -w "${HF_HOME}" ]]; then
+  :
+else
+  export HF_HOME="${ER_LQZ_ROOT}/.cache/hf"
+  mkdir -p "${HF_HOME}"
+fi
 
 # ROS2 + colcon 安装的 lerobot（优先）；否则使用源码路径
 # setup.bash 会读写尚未定义的 ament 变量；调用方若 set -u 会报错，需临时关闭 nounset
@@ -73,6 +81,6 @@ _lerobot_filter_py310_from_pythonpath() {
 }
 _lerobot_filter_py310_from_pythonpath
 unset -f _lerobot_filter_py310_from_pythonpath
-export PYTHONPATH="${CONDA_SITE_PACKAGES}:${ER_LQZ_ROOT}/lerobot/src${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${ER_LQZ_ROOT}/lerobot/src:${CONDA_SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
 
 unset _ENV_SCRIPT

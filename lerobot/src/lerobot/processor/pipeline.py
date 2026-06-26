@@ -55,6 +55,12 @@ from .converters import batch_to_transition, create_transition, transition_to_ba
 TInput = TypeVar("TInput")
 TOutput = TypeVar("TOutput")
 
+# Backward-compatible aliases for processor steps renamed across LeRobot versions.
+_LEGACY_PROCESSOR_STEP_ALIASES: dict[str, str] = {
+  # lerobot/pi0_base and older checkpoints (pre v0.5.x rename)
+  "relative_actions_processor": "delta_actions_processor",
+}
+
 
 class ProcessorStepRegistry:
     """A registry for ProcessorStep classes to allow instantiation from a string name.
@@ -111,14 +117,15 @@ class ProcessorStepRegistry:
         Raises:
             KeyError: If the name is not found in the registry.
         """
-        if name not in cls._registry:
+        resolved_name = _LEGACY_PROCESSOR_STEP_ALIASES.get(name, name)
+        if resolved_name not in cls._registry:
             available = list(cls._registry.keys())
             raise KeyError(
                 f"Processor step '{name}' not found in registry. "
                 f"Available steps: {available}. "
                 f"Make sure the step is registered using @ProcessorStepRegistry.register()"
             )
-        return cls._registry[name]
+        return cls._registry[resolved_name]
 
     @classmethod
     def unregister(cls, name: str) -> None:

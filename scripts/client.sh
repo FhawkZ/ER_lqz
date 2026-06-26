@@ -6,6 +6,10 @@
 # 再在本机:
 #   SERVER_ADDRESS=<GPU机IP>:8080 bash scripts/client.sh
 # 本机联调: SERVER_ADDRESS=127.0.0.1:8080（server 与 client 同机）
+#
+# SmolVLA 示例（POLICY_TYPE 会自动从 config.json 读取，也可显式指定）:
+#   POLICY_PATH=${ER_LQZ_ROOT}/models/smolvla_redcube_merged_quat/checkpoints/060000/pretrained_model \
+#   POLICY_TYPE=smolvla bash scripts/client.sh
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +27,18 @@ elif ! nc -zv -w 2 "${_server_host}" "${_server_port}" 2>&1 | grep -q succeeded;
   exit 1
 fi
 unset _server_host _server_port
-POLICY_PATH="${POLICY_PATH:-/media/disk/isaac_lqz/ER_lqz/models/pi0_redcube_lora_vlm_bs8/checkpoints/160000/pretrained_model}"
+
+# 权重路径必须是 server 主机上的本地目录（client 只传字符串，server 侧加载）
+POLICY_PATH="${POLICY_PATH:-${ER_LQZ_ROOT}/models/pi0_redcube_lora_vlm_bs8/checkpoints/160000/pretrained_model}"
+
+# POLICY_TYPE 须与 checkpoint 的 config.json 中 "type" 一致；未设置时从 config.json 自动读取
+if [[ -z "${POLICY_TYPE:-}" && -f "${POLICY_PATH}/config.json" ]]; then
+  POLICY_TYPE="$(
+    python -c "import json,sys; print(json.load(open(sys.argv[1]))['type'])" "${POLICY_PATH}/config.json"
+  )"
+fi
+POLICY_TYPE="${POLICY_TYPE:-pi0}"
+
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
 ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 
@@ -33,7 +48,7 @@ exec python -m lerobot.async_inference.robot_client \
   --robot.type="${ROBOT_TYPE}" \
   --robot.cameras="${CAMERAS}" \
   --server_address="${SERVER_ADDRESS}" \
-  --policy_type="${POLICY_TYPE:-pi0}" \
+  --policy_type="${POLICY_TYPE}" \
   --pretrained_name_or_path="${POLICY_PATH}" \
   --actions_per_chunk="${ACTIONS_PER_CHUNK:-50}" \
   --chunk_size_threshold="${CHUNK_SIZE_THRESHOLD:-0}" \

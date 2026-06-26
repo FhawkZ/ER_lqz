@@ -1,5 +1,6 @@
 # 数据集与缓存（体积大，勿提交）
 /Data/
+/data/
 /hf/
 /outputs/
 /.*/
@@ -42,3 +43,4 @@ lerobot/.git.backup_nested
 lerobot/linkerhand_mocap.tar
 *.tar
 !*.tar.bz2
+*.zip

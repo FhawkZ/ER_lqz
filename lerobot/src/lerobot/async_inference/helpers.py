@@ -33,6 +33,7 @@ from lerobot.policies import (  # noqa: F401
     PI05Config,
     SmolVLAConfig,
     VQBeTConfig,
+    XVLAConfig,
 )
 from lerobot.robots.robot import Robot
 from lerobot.utils.constants import OBS_IMAGES, OBS_STATE, OBS_STR
@@ -89,10 +90,13 @@ def raw_observation_to_observation(
     raw_observation: RawObservation,
     lerobot_features: dict[str, dict],
     policy_image_features: dict[str, PolicyFeature],
+    rename_map: dict[str, str] | None = None,
 ) -> Observation:
     observation = {}
 
-    observation = prepare_raw_observation(raw_observation, lerobot_features, policy_image_features)
+    observation = prepare_raw_observation(
+        raw_observation, lerobot_features, policy_image_features, rename_map=rename_map
+    )
     for k, v in observation.items():
         if isinstance(v, torch.Tensor):  # VLAs present natural-language instructions in observations
             if "image" in k:
@@ -144,9 +148,11 @@ def prepare_raw_observation(
     robot_obs: RawObservation,
     lerobot_features: dict[str, dict],
     policy_image_features: dict[str, PolicyFeature],
+    rename_map: dict[str, str] | None = None,
 ) -> Observation:
     """Matches keys from the raw robot_obs dict to the keys expected by a given policy (passed as
     policy_image_features)."""
+    rename_map = rename_map or {}
     # 1. {motor.pos1:value1, motor.pos2:value2, ..., laptop:np.ndarray} ->
     # -> {observation.state:[value1,value2,...], observation.images.laptop:np.ndarray}
     lerobot_obs = make_lerobot_observation(robot_obs, lerobot_features)
@@ -155,16 +161,19 @@ def prepare_raw_observation(
     image_keys = list(filter(is_image_key, lerobot_obs))
     # state's shape is expected as (B, state_dim)
     state_dict = {OBS_STATE: extract_state_from_raw_observation(lerobot_obs)}
-    image_dict = {
-        image_k: extract_images_from_raw_observation(lerobot_obs, image_k) for image_k in image_keys
-    }
 
-    # Turns the image features to (C, H, W) with H, W matching the policy image features.
-    # This reduces the resolution of the images
-    image_dict = {
-        key: resize_robot_observation_image(torch.tensor(lerobot_obs[key]), policy_image_features[key].shape)
-        for key in image_keys
-    }
+    # Apply rename_map so robot camera names (e.g. handeye) map to policy keys (e.g. image).
+    image_dict = {}
+    for key in image_keys:
+        policy_key = rename_map.get(key, key)
+        if policy_key not in policy_image_features:
+            raise KeyError(
+                f"Policy image feature '{policy_key}' not found (robot key '{key}'). "
+                f"Available: {list(policy_image_features)}. rename_map={rename_map}"
+            )
+        image_dict[policy_key] = resize_robot_observation_image(
+            torch.tensor(lerobot_obs[key]), policy_image_features[policy_key].shape
+        )
 
     if "task" in robot_obs:
         state_dict["task"] = robot_obs["task"]

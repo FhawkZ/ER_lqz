@@ -24,10 +24,13 @@ python -m lerobot.async_inference.policy_server \
 ```
 """
 
+import json
 import logging
 import pickle  # nosec
 import threading
 import time
+import traceback
+from pathlib import Path
 from concurrent import futures
 from dataclasses import asdict
 from pprint import pformat
@@ -38,8 +41,11 @@ import draccus
 import grpc
 import torch
 
+from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies.factory import get_policy_class, make_pre_post_processors
+from lerobot.policies.utils import populate_queues
 from lerobot.processor import PolicyProcessorPipeline
+from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_IMAGES
 from lerobot.transport import (
     services_pb2,  # type: ignore
     services_pb2_grpc,  # type: ignore
@@ -47,8 +53,10 @@ from lerobot.transport import (
 from lerobot.transport.utils import receive_bytes_in_chunks
 from lerobot.types import PolicyAction
 
+from .policy_loader import load_policy_from_checkpoint
 from .configs import PolicyServerConfig
-from .constants import SUPPORTED_POLICIES
+from .constants import POLICIES_REQUIRING_QUEUE_PREP, SUPPORTED_POLICIES
+from .inference_trace import InferenceTraceRecorder
 from .helpers import (
     FPSTracker,
     Observation,
@@ -59,6 +67,28 @@ from .helpers import (
     observations_similar,
     raw_observation_to_observation,
 )
+
+
+def _checkpoint_policy_type(pretrained_path: str) -> str | None:
+    """Read ``type`` from ``config.json`` under a local checkpoint directory."""
+    config_path = Path(pretrained_path) / "config.json"
+    if not config_path.is_file():
+        return None
+    with config_path.open() as f:
+        return json.load(f).get("type")
+
+
+def _load_rename_map_from_checkpoint(pretrained_path: str) -> dict[str, str]:
+    """Read observation rename_map saved in ``policy_preprocessor.json``."""
+    preproc_path = Path(pretrained_path) / "policy_preprocessor.json"
+    if not preproc_path.is_file():
+        return {}
+    with preproc_path.open() as f:
+        data = json.load(f)
+    for step in data.get("steps", []):
+        if step.get("registry_name") == "rename_observations_processor":
+            return dict(step.get("config", {}).get("rename_map", {}))
+    return {}
 
 
 class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
@@ -87,6 +117,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.policy = None
         self.preprocessor: PolicyProcessorPipeline[dict[str, Any], dict[str, Any]] | None = None
         self.postprocessor: PolicyProcessorPipeline[PolicyAction, PolicyAction] | None = None
+        self.observation_rename_map: dict[str, str] = {}
+        self.pretrained_path: str | None = None
+        self.trace_recorder = InferenceTraceRecorder(config.trace_dir, enabled=config.record_inference)
 
     @property
     def running(self):
@@ -104,6 +137,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
 
         with self._predicted_timesteps_lock:
             self._predicted_timesteps = set()
+
+        if self.policy is not None and hasattr(self.policy, "reset"):
+            self.policy.reset()
 
     def Ready(self, request, context):  # noqa: N802
         client_id = context.peer()
@@ -145,24 +181,54 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.policy_type = policy_specs.policy_type  # act, pi0, etc.
         self.lerobot_features = policy_specs.lerobot_features
         self.actions_per_chunk = policy_specs.actions_per_chunk
+        self.pretrained_path = policy_specs.pretrained_name_or_path
+
+        checkpoint_rename_map = _load_rename_map_from_checkpoint(policy_specs.pretrained_name_or_path)
+        self.observation_rename_map = {**checkpoint_rename_map, **policy_specs.rename_map}
+        if self.observation_rename_map:
+            self.logger.info(f"Observation rename_map: {self.observation_rename_map}")
+
+        checkpoint_type = _checkpoint_policy_type(policy_specs.pretrained_name_or_path)
+        if checkpoint_type is not None and checkpoint_type != self.policy_type:
+            raise ValueError(
+                f"policy_type mismatch: client requested '{self.policy_type}' but checkpoint "
+                f"'{policy_specs.pretrained_name_or_path}' has type '{checkpoint_type}'. "
+                f"Set POLICY_TYPE={checkpoint_type} on the robot client."
+            )
 
         policy_class = get_policy_class(self.policy_type)
 
         start = time.perf_counter()
-        self.policy = policy_class.from_pretrained(policy_specs.pretrained_name_or_path)
-        self.policy.to(self.device)
+        try:
+            self.policy = load_policy_from_checkpoint(
+                policy_class, policy_specs.pretrained_name_or_path, self.logger
+            )
+            self.policy.to(self.device)
 
-        # Load preprocessor and postprocessor, overriding device to match requested device
-        device_override = {"device": self.device}
-        self.preprocessor, self.postprocessor = make_pre_post_processors(
-            self.policy.config,
-            pretrained_path=policy_specs.pretrained_name_or_path,
-            preprocessor_overrides={
-                "device_processor": device_override,
-                "rename_observations_processor": {"rename_map": policy_specs.rename_map},
-            },
-            postprocessor_overrides={"device_processor": device_override},
-        )
+            # Load preprocessor and postprocessor, overriding device to match requested device
+            device_override = {"device": self.device}
+            preprocessor_overrides: dict[str, dict] = {"device_processor": device_override}
+            if policy_specs.rename_map:
+                preprocessor_overrides["rename_observations_processor"] = {
+                    "rename_map": policy_specs.rename_map
+                }
+            self.preprocessor, self.postprocessor = make_pre_post_processors(
+                self.policy.config,
+                pretrained_path=policy_specs.pretrained_name_or_path,
+                preprocessor_overrides=preprocessor_overrides,
+                postprocessor_overrides={"device_processor": device_override},
+            )
+        except Exception as exc:
+            tb = traceback.format_exc()
+            self.logger.error(f"Failed to load policy: {exc}\n{tb}")
+            self.trace_recorder.record_error(
+                stage="SendPolicyInstructions",
+                error=str(exc),
+                policy_type=self.policy_type,
+                pretrained_path=policy_specs.pretrained_name_or_path,
+                extra={"traceback": tb},
+            )
+            raise
 
         end = time.perf_counter()
 
@@ -226,11 +292,18 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
             )
 
             with self._predicted_timesteps_lock:
-                self._predicted_timesteps.add(obs.get_timestep())
+                if obs.get_timestep() in self._predicted_timesteps:
+                    self.logger.debug(
+                        f"Skipping observation #{obs.get_timestep()} - already predicted"
+                    )
+                    return services_pb2.Empty()
 
             start_time = time.perf_counter()
             action_chunk = self._predict_action_chunk(obs)
             inference_time = time.perf_counter() - start_time
+
+            with self._predicted_timesteps_lock:
+                self._predicted_timesteps.add(obs.get_timestep())
 
             start_time = time.perf_counter()
             actions_bytes = pickle.dumps(action_chunk)  # nosec
@@ -261,7 +334,15 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
             return services_pb2.Empty()
 
         except Exception as e:
-            self.logger.error(f"Error in StreamActions: {e}")
+            tb = traceback.format_exc()
+            self.logger.error(f"Error in StreamActions: {e}\n{tb}")
+            self.trace_recorder.record_error(
+                stage="GetActions",
+                error=str(e),
+                policy_type=self.policy_type,
+                pretrained_path=self.pretrained_path,
+                extra={"traceback": tb},
+            )
 
             return services_pb2.Empty()
 
@@ -319,8 +400,33 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
             for i, action in enumerate(action_chunk)
         ]
 
+    def _prepare_observation_for_policy(self, observation: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Populate observation history queues for policies that need them.
+
+        Diffusion and similar policies maintain ``_queues`` of past observations.
+        During normal env rollout, ``select_action`` fills these queues before calling
+        ``predict_action_chunk``. The async server calls ``predict_action_chunk`` directly,
+        so we must mirror that queue population here.
+        """
+        if self.policy_type not in POLICIES_REQUIRING_QUEUE_PREP:
+            return observation
+
+        batch = dict(observation)
+        batch.pop(ACTION, None)
+
+        config = self.policy.config
+        if config.image_features:
+            if hasattr(self.policy, "_queues") and OBS_IMAGE in self.policy._queues:
+                batch[OBS_IMAGE] = batch[next(iter(config.image_features))]
+            else:
+                batch[OBS_IMAGES] = torch.stack([batch[key] for key in config.image_features], dim=-4)
+
+        self.policy._queues = populate_queues(self.policy._queues, batch)
+        return batch
+
     def _get_action_chunk(self, observation: dict[str, torch.Tensor]) -> torch.Tensor:
         """Get an action chunk from the policy. The chunk contains only"""
+        observation = self._prepare_observation_for_policy(observation)
         chunk = self.policy.predict_action_chunk(observation)
         if chunk.ndim != 3:
             chunk = chunk.unsqueeze(0)  # adding batch dimension, now shape is (B, chunk_size, action_dim)
@@ -343,7 +449,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
             observation_t.get_observation(),
             self.lerobot_features,
             self.policy_image_features,
+            rename_map=self.observation_rename_map,
         )
+        observation_for_trace = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in observation.items()}
         prepare_time = time.perf_counter() - start_prepare
 
         """2. Apply preprocessor"""
@@ -380,6 +488,23 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.logger.debug(f"Postprocessed action shape: {action_tensor.shape}")
 
         action_tensor = action_tensor.detach().cpu()
+
+        action_names = None
+        if hasattr(self.policy.config, "action_feature_names"):
+            action_names = getattr(self.policy.config, "action_feature_names", None)
+        if action_names:
+            action_names = [n.replace(".pos", "") for n in action_names]
+
+        self.trace_recorder.record(
+            timestep=observation_t.get_timestep(),
+            timestamp=observation_t.get_timestamp(),
+            policy_type=self.policy_type or "",
+            pretrained_path=self.pretrained_path or "",
+            raw_observation=observation_t.get_observation(),
+            observation=observation_for_trace,
+            action_chunk=action_tensor,
+            action_names=action_names,
+        )
 
         """5. Convert to TimedAction list"""
         action_chunk = self._time_action_chunk(
@@ -428,6 +553,9 @@ def serve(cfg: PolicyServerConfig):
     server.add_insecure_port(f"{cfg.host}:{cfg.port}")
 
     policy_server.logger.info(f"PolicyServer started on {cfg.host}:{cfg.port}")
+    policy_server.logger.info(f"Loaded from: {PolicyServer.__module__}")
+    from .constants import SUPPORTED_POLICIES as _supported
+    policy_server.logger.info(f"Supported policies: {_supported}")
     server.start()
 
     server.wait_for_termination()

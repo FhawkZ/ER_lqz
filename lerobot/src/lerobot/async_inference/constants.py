@@ -23,7 +23,11 @@ DEFAULT_INFERENCE_LATENCY = 1 / DEFAULT_FPS
 DEFAULT_OBS_QUEUE_TIMEOUT = 2
 
 # All action chunking policies
-SUPPORTED_POLICIES = ["act", "smolvla", "diffusion", "tdmpc", "vqbet", "pi0", "pi05", "groot"]
+SUPPORTED_POLICIES = ["act", "smolvla", "diffusion", "tdmpc", "vqbet", "pi0", "pi05", "groot", "xvla"]
+
+# Policies whose predict_action_chunk reads from _queues but does not populate them
+# (populate_queues is only called from select_action during normal rollout).
+POLICIES_REQUIRING_QUEUE_PREP = frozenset({"diffusion", "vqbet", "tdmpc", "multi_task_dit"})
 
 # TODO: Add all other robots
 SUPPORTED_ROBOTS = [

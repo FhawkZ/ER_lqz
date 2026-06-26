@@ -50,6 +50,29 @@ else:
     AutoProcessor = None
     AutoTokenizer = None
 
+_TOKENIZER_LOGGER = logging.getLogger(__name__)
+
+
+def _load_tokenizer_from_pretrained(tokenizer_name: str):
+    """Load tokenizer from local HF cache first to avoid hub SSL failures on inference servers."""
+    assert AutoTokenizer is not None
+    try:
+        from huggingface_hub import snapshot_download
+
+        local_dir = snapshot_download(tokenizer_name, local_files_only=True)
+        return AutoTokenizer.from_pretrained(local_dir, local_files_only=True)
+    except Exception as local_exc:
+        _TOKENIZER_LOGGER.warning(
+            "Local tokenizer cache miss for '%s' (%s). Trying hub download.",
+            tokenizer_name,
+            local_exc,
+        )
+    try:
+        return AutoTokenizer.from_pretrained(tokenizer_name, local_files_only=True)
+    except Exception:
+        pass
+    return AutoTokenizer.from_pretrained(tokenizer_name)
+
 
 @dataclass
 @ProcessorStepRegistry.register(name="tokenizer_processor")
@@ -108,7 +131,7 @@ class TokenizerProcessorStep(ObservationProcessorStep):
         elif self.tokenizer_name is not None:
             if AutoTokenizer is None:
                 raise ImportError("AutoTokenizer is not available")
-            self.input_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
+            self.input_tokenizer = _load_tokenizer_from_pretrained(self.tokenizer_name)
         else:
             raise ValueError(
                 "Either 'tokenizer' or 'tokenizer_name' must be provided. "
