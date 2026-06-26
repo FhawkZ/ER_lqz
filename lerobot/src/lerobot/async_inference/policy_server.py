@@ -63,7 +63,9 @@ from .helpers import (
     RemotePolicyConfig,
     TimedAction,
     TimedObservation,
+    align_lerobot_features_to_policy_state,
     get_logger,
+    load_observation_state_names_from_checkpoint,
     observations_similar,
     raw_observation_to_observation,
 )
@@ -182,6 +184,22 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.lerobot_features = policy_specs.lerobot_features
         self.actions_per_chunk = policy_specs.actions_per_chunk
         self.pretrained_path = policy_specs.pretrained_name_or_path
+
+        policy_state_names = load_observation_state_names_from_checkpoint(
+            policy_specs.pretrained_name_or_path
+        )
+        if policy_state_names and self.lerobot_features is not None:
+            self.lerobot_features = align_lerobot_features_to_policy_state(
+                self.lerobot_features, policy_state_names
+            )
+            preview = ", ".join(policy_state_names[:4])
+            if len(policy_state_names) > 4:
+                preview += ", ..."
+            self.logger.info(
+                "Aligned observation.state to checkpoint (%dD): %s",
+                len(policy_state_names),
+                preview,
+            )
 
         checkpoint_rename_map = _load_rename_map_from_checkpoint(policy_specs.pretrained_name_or_path)
         self.observation_rename_map = {**checkpoint_rename_map, **policy_specs.rename_map}

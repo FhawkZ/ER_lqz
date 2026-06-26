@@ -49,11 +49,18 @@ class FR3EEF(Robot):
     (`JointState` on `hand_control_topic`).
 
     Pose representation in observation / action:
-        ``[x, y, z, qx, qy, qz, qw]`` unit quaternion (scipy / geometry_msgs
-        ordering). Quaternion components are sign-aligned frame-to-frame.
+        Observation arm proprioception is selected by ``arm_observation_rep``:
+        - ``eef_quat``: ``[x, y, z, qx, qy, qz, qw]`` (legacy redcube checkpoints).
+        - ``joint_pos``: 7 measured joint angles (rad), aligned with joint torques.
 
-    When ``joint_torque_state_topic`` is set, observation also includes 7D
-    measured joint torques ``tau_J`` (Nm) from Franka's link-side torque sensors.
+        Actions remain 7D EE pose + 6D hand joints. Quaternion components are
+        sign-aligned frame-to-frame when EE pose is used.
+
+    When ``joint_torque_state_topic`` is set and ``arm_observation_rep=joint_pos``,
+    observation also includes 7D filtered external joint torques ``tau_ext_hat_filtered`` (Nm).
+
+    Raw observations always include EE pose keys when the arm pose topic is
+    available, so async inference can remap state to legacy EE checkpoints.
     """
 
     config_class = FR3EEFConfig
@@ -72,8 +79,10 @@ class FR3EEF(Robot):
         # Cached states.
         self._arm_pose_msg: Optional[PoseStamped] = None
         self._hand_state_msg: Optional[JointState] = None
+        self._joint_position_msg: Optional[JointState] = None
         self._joint_torque_msg: Optional[JointState] = None
         self.arm_pose_current = np.zeros(7)  # [x, y, z, qx, qy, qz, qw]
+        self.arm_joints_current = np.zeros(len(self.config.arm_joint_names))
         self.hand_joints_current = np.zeros(len(self.config.hand_joint_names))
 
         # Publishers.
@@ -93,17 +102,40 @@ class FR3EEF(Robot):
     def _joint_torque_enabled(self) -> bool:
         return bool(self.config.joint_torque_state_topic.strip())
 
+    @property
+    def _uses_joint_pos_obs(self) -> bool:
+        return self.config.arm_observation_rep == "joint_pos"
+
+    @property
+    def _joint_position_enabled(self) -> bool:
+        return bool(self.config.joint_position_state_topic.strip())
+
+    def _validate_config(self) -> None:
+        if self.config.arm_observation_rep not in ("eef_quat", "joint_pos"):
+            raise ValueError(
+                f"arm_observation_rep must be 'eef_quat' or 'joint_pos', "
+                f"got {self.config.arm_observation_rep!r}"
+            )
+        if self._uses_joint_pos_obs and not self._joint_position_enabled:
+            raise ValueError(
+                "arm_observation_rep='joint_pos' requires joint_position_state_topic"
+            )
+
     # ---------------------------------------------------------------------
     # Feature schemas
     # ---------------------------------------------------------------------
     @property
     def observation_features(self) -> dict[str, type | tuple]:
         features: dict[str, type | tuple] = {}
-        for j in self.config.arm_pose_names:
-            features[f"{j}.pos"] = float
+        if self._uses_joint_pos_obs:
+            for joint in self.config.arm_joint_names:
+                features[f"{joint}.pos"] = float
+        else:
+            for j in self.config.arm_pose_names:
+                features[f"{j}.pos"] = float
         for j in self.config.hand_joint_names:
             features[f"{j}.pos"] = float
-        if self._joint_torque_enabled:
+        if self._uses_joint_pos_obs and self._joint_torque_enabled:
             for joint in self.config.arm_joint_names:
                 features[f"{joint}.torque"] = float
         for cam_key in self.cameras:
@@ -128,6 +160,8 @@ class FR3EEF(Robot):
         if self.is_connected:
             raise DeviceAlreadyConnectedError(f"{self} is already connected")
 
+        self._validate_config()
+
         if not rclpy.ok():
             rclpy.init()
             self._owns_rclpy = True
@@ -150,6 +184,14 @@ class FR3EEF(Robot):
         self._node.create_subscription(
             JointState, self.config.hand_state_topic, self._hand_state_cb, 10
         )
+
+        if self._joint_position_enabled:
+            self._node.create_subscription(
+                JointState,
+                self.config.joint_position_state_topic,
+                self._joint_position_cb,
+                10,
+            )
 
         if self._joint_torque_enabled:
             self._node.create_subscription(
@@ -175,11 +217,16 @@ class FR3EEF(Robot):
 
         hz = float(self.config.control_hz)
         logger.info(
-            "%s connected (arm_pose_cmd=%s, arm_pose_state=%s, hand_cmd=%s, "
-            "joint_torque_state=%s, arm_publish=%s, control_hz=%.1f)",
+            "%s connected (arm_obs=%s, arm_pose_cmd=%s, arm_pose_state=%s, "
+            "joint_position_state=%s, hand_cmd=%s, joint_torque_state=%s, "
+            "arm_publish=%s, control_hz=%.1f)",
             self,
+            self.config.arm_observation_rep,
             self.config.arm_pose_command_topic,
             self.config.arm_pose_state_topic,
+            self.config.joint_position_state_topic
+            if self._joint_position_enabled
+            else "(disabled)",
             self.config.hand_control_topic,
             self.config.joint_torque_state_topic
             if self._joint_torque_enabled
@@ -232,6 +279,10 @@ class FR3EEF(Robot):
             self._hand_state_msg = msg
             self.hand_joints_current = np.array(msg.position, dtype=np.float64)
 
+    def _joint_position_cb(self, msg: JointState) -> None:
+        with self._lock:
+            self._joint_position_msg = msg
+
     def _joint_torque_cb(self, msg: JointState) -> None:
         with self._lock:
             self._joint_torque_msg = msg
@@ -259,26 +310,69 @@ class FR3EEF(Robot):
 
         return [float(effort) for effort in msg.effort[: len(self.config.arm_joint_names)]]
 
+    def _ordered_joint_positions(self) -> list[float]:
+        with self._lock:
+            msg = self._joint_position_msg
+        if msg is None:
+            return [0.0] * len(self.config.arm_joint_names)
+
+        if not msg.position:
+            return [0.0] * len(self.config.arm_joint_names)
+
+        if msg.name and len(msg.name) == len(msg.position):
+            name_to_pos = {name: pos for name, pos in zip(msg.name, msg.position)}
+            return [
+                float(name_to_pos.get(joint, 0.0)) for joint in self.config.arm_joint_names
+            ]
+
+        if len(msg.position) < len(self.config.arm_joint_names):
+            positions = [float(pos) for pos in msg.position[: len(self.config.arm_joint_names)]]
+            while len(positions) < len(self.config.arm_joint_names):
+                positions.append(0.0)
+            return positions
+
+        return [float(pos) for pos in msg.position[: len(self.config.arm_joint_names)]]
+
     def _wait_for_state(self) -> None:
         deadline = time.monotonic() + self.config.timeout_s
         arm_ok = False
         hand_ok = False
-        torque_ok = not self._joint_torque_enabled
+        joint_pos_ok = (not self._uses_joint_pos_obs) or not self._joint_position_enabled
+        torque_ok = (not self._uses_joint_pos_obs) or (not self._joint_torque_enabled)
         while time.monotonic() < deadline:
             with self._lock:
                 arm_ok = self._arm_pose_msg is not None
                 hand_ok = self._hand_state_msg is not None
-                torque_ok = (not self._joint_torque_enabled) or self._joint_torque_msg is not None
-            if arm_ok and hand_ok and torque_ok:
+                joint_pos_ok = (
+                    (not self._uses_joint_pos_obs)
+                    or (not self._joint_position_enabled)
+                    or self._joint_position_msg is not None
+                )
+                torque_ok = (
+                    (not self._uses_joint_pos_obs)
+                    or (not self._joint_torque_enabled)
+                    or self._joint_torque_msg is not None
+                )
+            if arm_ok and hand_ok and joint_pos_ok and torque_ok:
                 return
             time.sleep(0.01)
         if not arm_ok:
             missing = "arm_pose"
         elif not hand_ok:
             missing = "hand"
+        elif not joint_pos_ok:
+            missing = "joint_position"
         else:
             missing = "joint_torque"
         raise TimeoutError(f"Timeout waiting for {missing} state on ROS2 topics")
+
+    def _fill_eef_pose_obs(self, obs: dict[str, Any], arm_pose: np.ndarray) -> None:
+        for i, j in enumerate(self.config.arm_pose_names):
+            obs[f"{j}.pos"] = float(arm_pose[i])
+
+    def _fill_joint_pos_obs(self, obs: dict[str, Any], joint_positions: list[float]) -> None:
+        for idx, joint in enumerate(self.config.arm_joint_names):
+            obs[f"{joint}.pos"] = joint_positions[idx]
 
     # ---------------------------------------------------------------------
     # Observation
@@ -291,15 +385,20 @@ class FR3EEF(Robot):
         with self._lock:
             arm_pose = self.arm_pose_current.copy()
             hand_pos = self.hand_joints_current.copy()
+        joint_positions = self._ordered_joint_positions()
         joint_torques = self._ordered_joint_torques()
 
         obs: dict[str, Any] = {}
-        for i, j in enumerate(self.config.arm_pose_names):
-            obs[f"{j}.pos"] = float(arm_pose[i])
+        if self._uses_joint_pos_obs:
+            self._fill_joint_pos_obs(obs, joint_positions)
+            # Legacy EE checkpoints read these keys via server-side state remapping.
+            self._fill_eef_pose_obs(obs, arm_pose)
+        else:
+            self._fill_eef_pose_obs(obs, arm_pose)
         for i, j in enumerate(self.config.hand_joint_names):
             # Fall back to 0.0 if the hand publisher sends fewer joints than expected.
             obs[f"{j}.pos"] = float(hand_pos[i]) if i < len(hand_pos) else 0.0
-        if self._joint_torque_enabled:
+        if self._uses_joint_pos_obs and self._joint_torque_enabled:
             for idx, joint in enumerate(self.config.arm_joint_names):
                 obs[f"{joint}.torque"] = joint_torques[idx]
         for cam_key, cam in self.cameras.items():

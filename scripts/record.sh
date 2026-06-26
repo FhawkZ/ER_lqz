@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 数据采集：mocap_retarget_leader → fr3_eef（LeRobot 0.5.1）
-# 与 teleop 相同配对；数据集 action 为 6D EE + 6D hand（非 7 关节臂）
+# 与 teleop 相同配对；action 仍为 7D EE 四元数 + 6D hand。
+# observation.state 默认 7D 关节角 + 6D hand + 7D 外力矩（与 effort 对齐）。
+# 录 legacy 13D EE 数据: --robot.arm_observation_rep=eef_quat
 #
 # 键盘: → 结束当前段/reset；← 重录本集；Esc 停止
 # 环境变量: DATASET_REPO_ID, DATASET_ROOT, WIPE_DATASET, RESUME, NUM_EPISODES, SINGLE_TASK

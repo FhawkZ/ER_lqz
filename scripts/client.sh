@@ -40,6 +40,9 @@ fi
 POLICY_TYPE="${POLICY_TYPE:-pi0}"
 
 # 策略若按关节空间训练，请保持 fr3_linker_l6_follower；EE 空间策略才用 fr3_eef
+# fr3_eef 默认 observation.state 为关节角+力矩；旧 EE 四元数 checkpoint 无需改 client，
+# policy server 会按 checkpoint 的 state 布局自动从原始观测中取 ee_x/ori_q* 等字段。
+# 若需显式录 legacy 13D EE 数据: --robot.arm_observation_rep=eef_quat
 ROBOT_TYPE="${ROBOT_TYPE:-fr3_eef}"
 
 CAMERAS='{ handeye: {type: intelrealsense, serial_number_or_name: 242622071515, width: 640, height: 480, fps: 30}, fixed: {type: intelrealsense, serial_number_or_name: 242522071983, width: 640, height: 480, fps: 30}}'

@@ -61,6 +61,18 @@ class FR3EEFConfig(RobotConfig):
     ema_alpha_pos: float = 0.2
     ema_alpha_rot: float = 0.2
 
+    # Arm proprioception in observation.state:
+    #   ``eef_quat`` — 7D EE pose (xyz + quaternion), matches legacy redcube checkpoints.
+    #   ``joint_pos`` — 7D measured joint angles (rad), aligned with joint torques.
+    arm_observation_rep: str = "joint_pos"
+
+    # Measured joint positions (``JointState.position``), used when
+    # ``arm_observation_rep=joint_pos``. Also kept in raw observations (not in
+    # ``observation_features``) when ``eef_quat`` so legacy policies can still read EE keys.
+    joint_position_state_topic: str = (
+        "/NS_1/franka_robot_state_broadcaster/measured_joint_states"
+    )
+
     # Names exposed as observation/action features for the FR3 end-effector.
     # 7D: position (xyz, meters) + orientation quaternion (qx,qy,qz,qw),
     # scipy / geometry_msgs ordering. Components are sign-aligned frame-to-frame
@@ -88,13 +100,13 @@ class FR3EEFConfig(RobotConfig):
         ]
     )
 
-    # Franka 连杆侧关节力矩传感器 tau_J（libfranka: measured link-side joint torque）。
-    # 来自 franka_robot_state_broadcaster 的 measured_joint_states，读 JointState.effort。
+    # Franka 滤波后估计外力矩 tau_ext_hat_filtered（libfranka，单位 Nm）。
+    # 来自 franka_robot_state_broadcaster 的 external_joint_torques，读 JointState.effort。
     # 置空字符串可关闭（不订阅、不写入 observation）。
-    # 另可选 external_joint_torques（tau_ext_hat_filtered，估计外力矩，非原始传感器）：
-    #   /NS_1/franka_robot_state_broadcaster/external_joint_torques
+    # 原始关节力矩传感器 tau_J 见 measured_joint_states：
+    #   /NS_1/franka_robot_state_broadcaster/measured_joint_states
     joint_torque_state_topic: str = (
-        "/NS_1/franka_robot_state_broadcaster/measured_joint_states"
+        "/NS_1/franka_robot_state_broadcaster/external_joint_torques"
     )
     arm_joint_names: list[str] = field(
         default_factory=lambda: [

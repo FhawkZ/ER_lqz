@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import logging.handlers
 import os
@@ -66,6 +67,55 @@ def visualize_action_queue_size(action_queue_size: list[int]) -> None:
 
 def map_robot_keys_to_lerobot_features(robot: Robot) -> dict[str, dict]:
     return hw_to_dataset_features(robot.observation_features, OBS_STR, use_video=False)
+
+
+def load_observation_state_names_from_checkpoint(pretrained_path: str) -> list[str] | None:
+    """Load ``observation.state`` component names saved with a policy checkpoint.
+
+    Tries the training dataset ``meta/info.json`` first (authoritative for state
+    layout), then falls back to ``action_feature_names`` when state and action
+    shapes match (common for pi0 / pi05 on fr3_eef).
+    """
+    base = Path(pretrained_path)
+    train_cfg_path = base / "train_config.json"
+    if train_cfg_path.is_file():
+        with train_cfg_path.open() as f:
+            train_cfg = json.load(f)
+        dataset_root = train_cfg.get("dataset", {}).get("root")
+        if dataset_root:
+            info_path = Path(dataset_root) / "meta" / "info.json"
+            if info_path.is_file():
+                with info_path.open() as f:
+                    info = json.load(f)
+                state_ft = info.get("features", {}).get(OBS_STATE)
+                if state_ft and state_ft.get("names"):
+                    return list(state_ft["names"])
+
+    config_path = base / "config.json"
+    if config_path.is_file():
+        with config_path.open() as f:
+            cfg = json.load(f)
+        state_shape = cfg.get("input_features", {}).get(OBS_STATE, {}).get("shape", [None])[0]
+        action_shape = cfg.get("output_features", {}).get("action", {}).get("shape", [None])[0]
+        action_names = cfg.get("action_feature_names")
+        if action_names and state_shape is not None and state_shape == action_shape:
+            return list(action_names)
+
+    return None
+
+
+def align_lerobot_features_to_policy_state(
+    lerobot_features: dict[str, dict],
+    policy_state_names: list[str],
+) -> dict[str, dict]:
+    """Override client ``observation.state`` layout to match a loaded policy."""
+    aligned = dict(lerobot_features)
+    aligned[OBS_STATE] = {
+        "dtype": "float32",
+        "shape": (len(policy_state_names),),
+        "names": list(policy_state_names),
+    }
+    return aligned
 
 
 def is_image_key(k: str) -> bool:
