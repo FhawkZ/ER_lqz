@@ -108,6 +108,24 @@ class FR3EEFConfig(RobotConfig):
     joint_torque_state_topic: str = (
         "/NS_1/franka_robot_state_broadcaster/external_joint_torques"
     )
+
+    # 刚度坐标系下估计的末端外力/力矩（libfranka K_F_ext_hat_K）。
+    # 来自 franka_robot_state_broadcaster 的 external_wrench_in_stiffness_frame，
+    # 消息类型 geometry_msgs/WrenchStamped（force N + torque Nm）。
+    # 置空字符串可关闭（不订阅、不写入 observation）。
+    external_wrench_state_topic: str = (
+        "/NS_1/franka_robot_state_broadcaster/external_wrench_in_stiffness_frame"
+    )
+    ee_wrench_names: list[str] = field(
+        default_factory=lambda: [
+            "ee_fx",
+            "ee_fy",
+            "ee_fz",
+            "ee_tx",
+            "ee_ty",
+            "ee_tz",
+        ]
+    )
     arm_joint_names: list[str] = field(
         default_factory=lambda: [
             "fr3_joint1",

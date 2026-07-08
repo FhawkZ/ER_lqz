@@ -25,7 +25,7 @@ import numpy as np
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, WrenchStamped
 from scipy.spatial.transform import Rotation
 
 from lerobot.cameras.utils import make_cameras_from_configs
@@ -59,8 +59,13 @@ class FR3EEF(Robot):
     When ``joint_torque_state_topic`` is set and ``arm_observation_rep=joint_pos``,
     observation also includes 7D filtered external joint torques ``tau_ext_hat_filtered`` (Nm).
 
-    Raw observations always include EE pose keys when the arm pose topic is
-    available, so async inference can remap state to legacy EE checkpoints.
+    When ``external_wrench_state_topic`` is set, observation includes 6D estimated
+    external wrench in the stiffness frame (``K_F_ext_hat_K``: force N + torque Nm).
+
+    EE pose from ``arm_pose_state_topic`` (``geometry_msgs/PoseStamped``) is always
+    exposed as ``ee_x`` … ``ori_qw`` in observations, including when
+    ``arm_observation_rep=joint_pos`` (async inference can remap state to legacy EE
+    checkpoints).
     """
 
     config_class = FR3EEFConfig
@@ -81,7 +86,9 @@ class FR3EEF(Robot):
         self._hand_state_msg: Optional[JointState] = None
         self._joint_position_msg: Optional[JointState] = None
         self._joint_torque_msg: Optional[JointState] = None
+        self._external_wrench_msg: Optional[WrenchStamped] = None
         self.arm_pose_current = np.zeros(7)  # [x, y, z, qx, qy, qz, qw]
+        self.external_wrench_current = np.zeros(len(self.config.ee_wrench_names))
         self.arm_joints_current = np.zeros(len(self.config.arm_joint_names))
         self.hand_joints_current = np.zeros(len(self.config.hand_joint_names))
 
@@ -110,6 +117,10 @@ class FR3EEF(Robot):
     def _joint_position_enabled(self) -> bool:
         return bool(self.config.joint_position_state_topic.strip())
 
+    @property
+    def _external_wrench_enabled(self) -> bool:
+        return bool(self.config.external_wrench_state_topic.strip())
+
     def _validate_config(self) -> None:
         if self.config.arm_observation_rep not in ("eef_quat", "joint_pos"):
             raise ValueError(
@@ -130,11 +141,15 @@ class FR3EEF(Robot):
         if self._uses_joint_pos_obs:
             for joint in self.config.arm_joint_names:
                 features[f"{joint}.pos"] = float
-        else:
-            for j in self.config.arm_pose_names:
-                features[f"{j}.pos"] = float
         for j in self.config.hand_joint_names:
             features[f"{j}.pos"] = float
+        for j in self.config.arm_pose_names:
+            features[f"{j}.pos"] = float
+        if self._external_wrench_enabled:
+            for name in self.config.ee_wrench_names[:3]:
+                features[f"{name}.force"] = float
+            for name in self.config.ee_wrench_names[3:]:
+                features[f"{name}.torque"] = float
         if self._uses_joint_pos_obs and self._joint_torque_enabled:
             for joint in self.config.arm_joint_names:
                 features[f"{joint}.torque"] = float
@@ -201,6 +216,14 @@ class FR3EEF(Robot):
                 10,
             )
 
+        if self._external_wrench_enabled:
+            self._node.create_subscription(
+                WrenchStamped,
+                self.config.external_wrench_state_topic,
+                self._external_wrench_cb,
+                10,
+            )
+
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
         self._spin_thread = threading.Thread(target=self._executor.spin, daemon=True)
@@ -219,7 +242,7 @@ class FR3EEF(Robot):
         logger.info(
             "%s connected (arm_obs=%s, arm_pose_cmd=%s, arm_pose_state=%s, "
             "joint_position_state=%s, hand_cmd=%s, joint_torque_state=%s, "
-            "arm_publish=%s, control_hz=%.1f)",
+            "external_wrench_state=%s, arm_publish=%s, control_hz=%.1f)",
             self,
             self.config.arm_observation_rep,
             self.config.arm_pose_command_topic,
@@ -230,6 +253,9 @@ class FR3EEF(Robot):
             self.config.hand_control_topic,
             self.config.joint_torque_state_topic
             if self._joint_torque_enabled
+            else "(disabled)",
+            self.config.external_wrench_state_topic
+            if self._external_wrench_enabled
             else "(disabled)",
             self.config.enable_arm_publish,
             hz,
@@ -287,6 +313,16 @@ class FR3EEF(Robot):
         with self._lock:
             self._joint_torque_msg = msg
 
+    def _external_wrench_cb(self, msg: WrenchStamped) -> None:
+        f = msg.wrench.force
+        t = msg.wrench.torque
+        with self._lock:
+            self._external_wrench_msg = msg
+            self.external_wrench_current = np.array(
+                [f.x, f.y, f.z, t.x, t.y, t.z],
+                dtype=np.float64,
+            )
+
     def _ordered_joint_torques(self) -> list[float]:
         with self._lock:
             msg = self._joint_torque_msg
@@ -339,6 +375,7 @@ class FR3EEF(Robot):
         hand_ok = False
         joint_pos_ok = (not self._uses_joint_pos_obs) or not self._joint_position_enabled
         torque_ok = (not self._uses_joint_pos_obs) or (not self._joint_torque_enabled)
+        wrench_ok = not self._external_wrench_enabled
         while time.monotonic() < deadline:
             with self._lock:
                 arm_ok = self._arm_pose_msg is not None
@@ -353,7 +390,11 @@ class FR3EEF(Robot):
                     or (not self._joint_torque_enabled)
                     or self._joint_torque_msg is not None
                 )
-            if arm_ok and hand_ok and joint_pos_ok and torque_ok:
+                wrench_ok = (
+                    (not self._external_wrench_enabled)
+                    or self._external_wrench_msg is not None
+                )
+            if arm_ok and hand_ok and joint_pos_ok and torque_ok and wrench_ok:
                 return
             time.sleep(0.01)
         if not arm_ok:
@@ -362,13 +403,21 @@ class FR3EEF(Robot):
             missing = "hand"
         elif not joint_pos_ok:
             missing = "joint_position"
-        else:
+        elif not torque_ok:
             missing = "joint_torque"
+        else:
+            missing = "external_wrench"
         raise TimeoutError(f"Timeout waiting for {missing} state on ROS2 topics")
 
     def _fill_eef_pose_obs(self, obs: dict[str, Any], arm_pose: np.ndarray) -> None:
         for i, j in enumerate(self.config.arm_pose_names):
             obs[f"{j}.pos"] = float(arm_pose[i])
+
+    def _fill_external_wrench_obs(self, obs: dict[str, Any], wrench: np.ndarray) -> None:
+        for i, name in enumerate(self.config.ee_wrench_names[:3]):
+            obs[f"{name}.force"] = float(wrench[i])
+        for i, name in enumerate(self.config.ee_wrench_names[3:], start=3):
+            obs[f"{name}.torque"] = float(wrench[i])
 
     def _fill_joint_pos_obs(self, obs: dict[str, Any], joint_positions: list[float]) -> None:
         for idx, joint in enumerate(self.config.arm_joint_names):
@@ -385,16 +434,16 @@ class FR3EEF(Robot):
         with self._lock:
             arm_pose = self.arm_pose_current.copy()
             hand_pos = self.hand_joints_current.copy()
+            external_wrench = self.external_wrench_current.copy()
         joint_positions = self._ordered_joint_positions()
         joint_torques = self._ordered_joint_torques()
 
         obs: dict[str, Any] = {}
         if self._uses_joint_pos_obs:
             self._fill_joint_pos_obs(obs, joint_positions)
-            # Legacy EE checkpoints read these keys via server-side state remapping.
-            self._fill_eef_pose_obs(obs, arm_pose)
-        else:
-            self._fill_eef_pose_obs(obs, arm_pose)
+        self._fill_eef_pose_obs(obs, arm_pose)
+        if self._external_wrench_enabled:
+            self._fill_external_wrench_obs(obs, external_wrench)
         for i, j in enumerate(self.config.hand_joint_names):
             # Fall back to 0.0 if the hand publisher sends fewer joints than expected.
             obs[f"{j}.pos"] = float(hand_pos[i]) if i < len(hand_pos) else 0.0
