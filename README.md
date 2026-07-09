@@ -154,3 +154,124 @@ DATASET_REPO_ID=franka_hand/redcube NUM_EPISODES=10 \
 ```
 
 清空重来时加 `WIPE_DATASET=true`（只删 `DATASET_LOCAL_ROOT`，不会误删整个 `Data/` 父目录）。
+
+### 2.4 会话收尾与残留清理（交接给下一位用户前必读）
+
+采集/遥操作结束后若直接离开，容易留下 **重复的 `franka.launch`、僵死的阻抗控制器、未恢复的 FCI error**，下一位用户更容易出现 `communication ... reflex error`。  
+**标准顺序：停 LeRobot → 停 launch 终端（Ctrl+C）→ 清残留 → `error_recovery` →（可选）回 home。**
+
+#### A) ROS 域与公共环境（每台机器/每个终端先设）
+
+实验室建议全员统一 `ROS_DOMAIN_ID`（例如 `42`），避免看到别人机器上的同名 topic：
+
+```bash
+# 写入 ~/.bashrc 或每个终端先执行
+export ROS_DOMAIN_ID=42
+export ROS_LOCALHOST_ONLY=0   # 仅本机通信时可设为 1
+
+source /opt/ros/humble/setup.bash
+source /home/franka/lqz/franka_ros2_15/install/setup.bash
+# 若在 franka_ros2_15 工作区内：
+# source install/setup.bash
+```
+
+查看当前域与节点：
+
+```bash
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}"
+ros2 node list
+ros2 topic list | head -30
+```
+
+#### B) 停止 LeRobot / 推理相关进程
+
+```bash
+# 查看残留（record / teleop / client / policy_server / rclpy）
+pgrep -af 'lerobot-record|lerobot-teleoperate|robot_client|policy_server|fr3_eef|mocap' || true
+
+# 按需结束（先尝试正常 Ctrl+C，不行再 kill）
+pkill -f 'lerobot-record' || true
+pkill -f 'lerobot-teleoperate' || true
+pkill -f 'lerobot.async_inference' || true
+pkill -f 'fr3_eef_' || true
+```
+
+#### C) 停止机械臂 / 灵巧手 ROS launch
+
+在运行 `ros2 launch ...` 的终端里 **Ctrl+C** 停掉，不要另开终端再 launch 叠一层。
+
+若终端已关、进程仍在：
+
+```bash
+pgrep -af 'cartesian_impedance|move_to_start|franka.launch|controller_manager|ros2_control|linker_hand' || true
+
+pkill -f 'cartesian_impedance_controller.launch.py' || true
+pkill -f 'move_to_start_example_controller' || true
+pkill -f 'linker_hand.launch.py' || true
+# 仍有个别 ros2 节点时（慎用，会关掉本域所有 ros2 相关进程）：
+# pkill -f 'ros2 launch' || true
+```
+
+#### D) FCI 错误恢复 + 回 home（推荐用脚本，不要叠在阻抗 launch 上）
+
+**必须先停掉 C 中的阻抗/示例控制器**，再执行：
+
+```bash
+# 含 error_recovery + move_to_start（勿在 cartesian_impedance 仍运行时执行）
+bash scripts/franka_move_to_start.sh
+```
+
+仅清除 Desk/reflex 错误、不移动：
+
+```bash
+/home/franka/lqz/franka_ros2_15/install/libfranka/bin/error_recovery 172.16.0.1
+# 或项目内路径：
+# ${ER_LQZ_ROOT}/franka_ros2_15/install/libfranka/bin/error_recovery 172.16.0.1
+```
+
+#### E) 清除 ROS 缓存 / daemon / DDS 共享内存
+
+```bash
+# 1) 重启 ros2 daemon（清 CLI 缓存、僵尸发现）
+ros2 daemon stop
+ros2 daemon start
+
+# 2) 日志（可定期删，不影响配置）
+rm -rf ~/.ros/log/*
+
+# 3) Fast DDS 共享内存残留（无其他人在用本机 ROS 时执行）
+rm -rf /dev/shm/fastrtps_* /dev/shm/fastdds_* 2>/dev/null || true
+
+# 4) 若改过 RMW 实现，确认与团队一致（默认 humble 多为 Fast DDS）
+echo "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+```
+
+#### F) 灵巧手 CAN 重置（仅手异常时）
+
+```bash
+sudo ip link set can0 down || true
+sudo ip link set can0 up type can bitrate 1000000
+```
+
+#### G) 交接前检查清单
+
+```bash
+# 1. 本域不应再有 franka 控制节点
+ros2 node list | grep -E 'NS_1|controller|franka' || echo "OK: no franka nodes"
+
+# 2. 机械臂状态（无 error、模式正常）
+bash scripts/diagnose_franka_fci.sh 172.16.0.1 enp12s0
+
+# 3. 无重复占用 FCI 的进程
+pgrep -af 'franka_hardware|ros2_control_node' || echo "OK: no hardware node"
+```
+
+**不要做的：**
+
+- `cartesian_impedance_controller` 仍在跑时，再 `ros2 launch ... move_to_start` 或再起一套 `franka.launch`
+- MoveIt launch 与笛卡尔阻抗 launch **同时**对 `NS_1` / `172.16.0.1`
+- 采完数据直接走人、不做 `error_recovery` 和进程清理
+
+[^developer]: 开发者向说明见各子目录 README。
+[^pythonpath]: `scripts/env_lerobot.sh` 将 conda `site-packages` 置于 ROS python3.10 路径之前。
+[^rerun]: https://rerun.io/
