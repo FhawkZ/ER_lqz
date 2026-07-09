@@ -44,3 +44,7 @@ lerobot/linkerhand_mocap.tar
 *.tar
 !*.tar.bz2
 *.zip
+
+# mocap L6 腕部 mesh：本地与 LFS 指针易漂移，不跟踪（工作区可保留）
+lerobot/src/lerobot/teleoperators/mocap_retarget/assets/l6/left/meshes/wrist_ft_link.stl
+lerobot/src/lerobot/teleoperators/mocap_retarget/assets/l6/right/meshes/wrist_ft_link.stl
