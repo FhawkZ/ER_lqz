@@ -182,6 +182,9 @@ outputs/
 !src/lerobot/teleoperators/mocap_retarget/assets/**
 !src/lerobot/teleoperators/mocap_retarget/**/*.stl
 !src/lerobot/teleoperators/mocap_retarget/**/*.STL
+# 本地 mesh 与 LFS 指针易漂移，不纳入版本库（保留工作区文件即可）
+src/lerobot/teleoperators/mocap_retarget/assets/l6/left/meshes/wrist_ft_link.stl
+src/lerobot/teleoperators/mocap_retarget/assets/l6/right/meshes/wrist_ft_link.stl
 !src/lerobot/teleoperators/mocap_retarget/**/*.urdf
 !src/lerobot/teleoperators/mocap_retarget/mocap/mocap_ros_py/lib/
 !src/lerobot/teleoperators/mocap_retarget/mocap/mocap_ros_py/lib/**
